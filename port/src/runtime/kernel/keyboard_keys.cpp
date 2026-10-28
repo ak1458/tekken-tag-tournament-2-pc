@@ -75,6 +75,35 @@ void Save()
 
 } // namespace
 
+bool SeparatePlayer()
+{
+    static const bool separate = GetPrivateProfileIntA("Keyboard", "SeparatePlayer", 0, IniPath().c_str()) == 1;
+    return separate;
+}
+
+int SOCD()
+{
+    static const int mode = [] {
+        const unsigned value = GetPrivateProfileIntA("Keyboard", "SOCD", 0, IniPath().c_str());
+        return value <= 3 ? int(value) : 0;
+    }();
+    return mode;
+}
+
+bool DPadOnly()
+{
+    static const bool on = GetPrivateProfileIntA("Input", "DPadOnly", 0, IniPath().c_str()) == 1;
+    return on;
+}
+int StickDeadzone()
+{
+    static const int percent = [] {
+        const unsigned value = GetPrivateProfileIntA("Input", "StickDeadzone", 0, IniPath().c_str());
+        return value <= 95 ? int(value) : 0;
+    }();
+    return percent;
+}
+
 int Key(int control)
 {
     Load();

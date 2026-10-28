@@ -22,6 +22,15 @@ CHECKER = r'''
 #include <future>
 #undef OUT
 bool WTrace(){return false;}
+void RollbackNoteIo(bool,const char*,const PPCContext*){}
+void RollbackBeforeHostWrite(uint32_t,uint32_t){}
+void RollbackSaveOpen(bool){}
+void RollbackImportNote(const char*){}
+bool XLiveCloseHandle(uint32_t,uint32_t&){return false;}
+bool XLiveEnumerate(uint8_t*,uint32_t,uint32_t,uint32_t,uint32_t&,uint32_t&){return false;}
+int32_t RollbackSaveJournalFrame(){return -1;}
+namespace profiles { uint64_t ActiveXuid(){return 0xB13EBABEBABEBABEull;} }
+
 void KernelQueueGuestCall(uint32_t,uint32_t,uint32_t,uint32_t,uint32_t){std::abort();}
 static void Reporter(PPCContext&,uint8_t*){std::abort();}
 PPCFunc* const g_unmappedReporter=Reporter;
@@ -201,6 +210,15 @@ def main():
         (folder / "ppc_recomp_shared.h").write_text(SHARED)
         includes = [folder, RECOMP / "XenonUtils", RECOMP / "thirdparty/simde",
                     ROOT / "port/src/runtime", kernel]
+        # This harness unity-includes production modules to inspect file handles.
+        # Remove only the duplicate default-argument declaration in its IO copy.
+        io_path = folder / "kernel_io_test.cpp"
+        io_text = (kernel / "kernel_io.cpp").read_text(encoding="utf-8-sig")
+        declaration = 'void RollbackNoteIo(bool frameOnly, const char* op = "", const PPCContext* ctx = nullptr);'
+        assert declaration in io_text
+        io_text = io_text.replace(declaration, "", 1)
+        io_path.write_text(io_text, encoding="utf-8")
+        source = source.replace((kernel / "kernel_io.cpp").as_posix(), io_path.as_posix())
         exe = compile_one(folder, "save_persistence", source, includes)
         sentinel = folder / "sentinel.bin"
         sentinel.write_bytes(b"disc-must-stay-readonly")
@@ -213,7 +231,7 @@ def main():
         print("PASS new-process reopen and disc sentinel unchanged")
         # Removing either a real write or component validation must fail before
         # the harness can claim a persistent or confined save.
-        io = (kernel / "kernel_io.cpp").read_text(encoding="utf-8-sig")
+        io = io_text
         start = io.index("PPC_FUNC(__imp__NtWriteFile)\n{")
         end = io.index("\nPPC_FUNC(__imp__NtWriteFileGather)", start)
         no_write = io[:start] + "PPC_FUNC(__imp__NtWriteFile) {ctx.r3.u32=0;}\n" + io[end:]
@@ -221,7 +239,7 @@ def main():
         unchecked = store.replace("if(!tail.empty()&&!Component(tail))", "if(false)")
         assert unchecked != store
         for name, changed in [
-            ("false_write", source.replace(f'#include "{(kernel / "kernel_io.cpp").as_posix()}"', no_write)),
+            ("false_write", source.replace(f'#include "{io_path.as_posix()}"', no_write)),
             ("unchecked_path", source.replace(f'#include "{(kernel / "save_store.cpp").as_posix()}"', unchecked)),
         ]:
             run_folder = folder / name

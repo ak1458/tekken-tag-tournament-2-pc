@@ -9,6 +9,8 @@
 #include "profiles.h"
 #include "sys_ui.h"
 #include "keyboard_keys.h"
+#include "direction_filter.h"
+#include "cheat_overlay.h"
 #include "xlive.h"
 #include <algorithm>
 #include <atomic>
@@ -94,6 +96,10 @@ static bool User0SignedIn() { return profiles::SignedIn(); }
 // claims it) and stays while user 0 is signed in; it is named after the profile ("NAME(1)"), has XUIDs
 // of its own derived from the profile's, and cannot save (the content calls take user 0 only, as on the
 // console, where guests have no storage).
+// Shared front-end navigation is enabled only by an explicit menu-frame allowlist.
+std::atomic<bool> g_sharedMenuInput{false};
+void HostSetSharedMenuInput(bool enabled) { g_sharedMenuInput.store(enabled); }
+
 std::atomic<uint32_t> g_usedUsers{ 0 };       // bit u: user u's controller has been used
 static bool SignedIn(uint32_t user)
 {
@@ -662,11 +668,15 @@ static KeyboardPad ReadKeyboardPad()
 
 struct PadPollState
 {
+    input_direction::Filter keyboardDirections;
     bool physicalConnected[4]{};
     uint64_t retryAtMs[4]{};                  // disconnected: next XInput probe (poll thread clock)
     XINPUT_CAPABILITIES caps[4]{};            // connected: capabilities, refreshed once a second
     uint64_t capsAtMs[4]{};
     bool keyboardEverPressed = false;
+    int keyboardGuest = -1;
+    uint16_t previousKeyboard = 0;
+    uint16_t previousButtons[4]{};
     // Host pad -> guest user, -1 until the pad is first used. A pad claims the lowest user no
     // other claimed pad holds on its first button or trigger press (sticks drift, so they do
     // not count), and keeps it across disconnects. Whoever picks up a controller is player 1
@@ -698,7 +708,8 @@ static uint16_t ParseButtons(const std::string& names, int* player = nullptr, ui
     static const std::pair<const char*, uint16_t> map[] = {
         { "START", 0x0010 }, { "BACK", 0x0020 }, { "UP", 0x0001 }, { "DOWN", 0x0002 },
         { "LEFT", 0x0004 }, { "RIGHT", 0x0008 }, { "A", 0x1000 }, { "B", 0x2000 },
-        { "X", 0x4000 }, { "Y", 0x8000 }, { "LB", 0x0100 }, { "RB", 0x0200 } };
+        { "X", 0x4000 }, { "Y", 0x8000 }, { "LB", 0x0100 }, { "RB", 0x0200 },
+        { "LS", 0x0040 }, { "RS", 0x0080 } };
     uint16_t b = 0;
     size_t pos = 0;
     while (pos <= names.size())
@@ -829,7 +840,8 @@ void PollPadsOnce(PadPollState& polling, bool autoStart, uint64_t elapsedMs, Pad
     // controller 0 even when a physical pad is present or the window is inactive.
     const bool startPulse = autoStart && elapsedMs > 45000 && (elapsedMs % 9000) < 300;
     // Scripted presses join the keyboard's (controller 0, foreground not required).
-    const KeyboardPad keyboard = ReadKeyboardPad();
+    KeyboardPad keyboard = ReadKeyboardPad();
+    keyboard.buttons = polling.keyboardDirections.Apply(keyboard.buttons, keyboard_keys::SOCD());
     uint8_t stick1 = 0, stick2 = 0;
     const uint16_t keyboardButtons = keyboard.buttons | (script ? ScriptButtons(*script, elapsedMs, 0, &stick1) : 0);
     {
@@ -853,6 +865,9 @@ void PollPadsOnce(PadPollState& polling, bool autoStart, uint64_t elapsedMs, Pad
         {
             if (XInputGetState(i, &sampled[i]) == ERROR_SUCCESS)
             {
+                auto& pad = sampled[i].Gamepad;
+                pad.sThumbLX = input_direction::Stick(pad.sThumbLX, keyboard_keys::DPadOnly(), keyboard_keys::StickDeadzone());
+                pad.sThumbLY = input_direction::Stick(pad.sThumbLY, keyboard_keys::DPadOnly(), keyboard_keys::StickDeadzone());
                 if (!polling.physicalConnected[i] || elapsedMs >= polling.capsAtMs[i])
                 {
                     XInputGetCapabilities(i, 0, &polling.caps[i]);
@@ -869,22 +884,36 @@ void PollPadsOnce(PadPollState& polling, bool autoStart, uint64_t elapsedMs, Pad
         }
     }
 
+    const bool dynamic = keyboard_keys::SeparatePlayer();
     auto claimed = [&](int user) {
+        if (dynamic && polling.keyboardGuest == user) return true;
         for (DWORD j = 0; j < 4; ++j)
             if (polling.guestOf[j] == user) return true;
         return false;
     };
+    // Keyboard wins a same-poll tie; otherwise ownership follows the first sampled edge.
+    // An idle device never reserves a slot. After P1, only START joins another player.
+    const uint16_t keyboardEdge = keyboard.buttons & ~polling.previousKeyboard;
+    polling.previousKeyboard = keyboard.buttons;
+    if (dynamic && polling.keyboardGuest < 0 && keyboardEdge &&
+        (keyboardEdge & 0x0010))
+        for (int user = 0; user < 4; ++user)
+            if (!claimed(user)) { polling.keyboardGuest = user; break; }
     for (DWORD i = 0; i < 4; ++i)
     {
         const XINPUT_GAMEPAD& g = sampled[i].Gamepad;
+        const uint16_t edge = g.wButtons & ~polling.previousButtons[i];
+        polling.previousButtons[i] = g.wButtons;
         const bool used = g.wButtons || g.bLeftTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD ||
                           g.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD;
         if (!polling.physicalConnected[i] || polling.guestOf[i] >= 0 || !used) continue;
+        if (dynamic && !(edge & 0x0010)) continue;
         for (int user = 0; user < 4; ++user)
             if (!claimed(user)) { polling.guestOf[i] = user; break; }
     }
     // Users 1-3 sign in as guests on their controller's first use (player 2's scripted presses count).
     uint32_t used = (script && script->player2 && player2Buttons) ? 2u : 0u;
+    if (dynamic && polling.keyboardGuest > 0) used |= 1u << polling.keyboardGuest;
     for (DWORD i = 0; i < 4; ++i)
         if (polling.guestOf[i] > 0) used |= 1u << polling.guestOf[i];
     if (const uint32_t added = used & ~g_usedUsers.fetch_or(used))
@@ -899,7 +928,7 @@ void PollPadsOnce(PadPollState& polling, bool autoStart, uint64_t elapsedMs, Pad
         if (polling.guestOf[i] >= 0 && polling.physicalConnected[i]) source[polling.guestOf[i]] = int(i);
     for (DWORD i = 0; i < 4; ++i)
     {
-        if (polling.guestOf[i] >= 0 || !polling.physicalConnected[i]) continue;
+        if (dynamic || polling.guestOf[i] >= 0 || !polling.physicalConnected[i]) continue;
         for (int user = 0; user < 4; ++user)
             if (source[user] < 0 && !claimed(user)) { source[user] = int(i); break; }
     }
@@ -927,24 +956,40 @@ void PollPadsOnce(PadPollState& polling, bool autoStart, uint64_t elapsedMs, Pad
                 caps.SubType = XINPUT_DEVSUBTYPE_GAMEPAD;
             }
         }
-        if (user == 0)
+        const int keyboardUser = dynamic ? polling.keyboardGuest : 0;
+        if (int(user) == keyboardUser || (user == 0 && (autoStart || script)))
         {
-            uint16_t buttons = keyboardButtons;
+            const bool ownsKeyboard = int(user) == keyboardUser;
+            uint16_t buttons = ownsKeyboard ? keyboard.buttons : 0;
+            if (user == 0) buttons |= keyboardButtons & ~keyboard.buttons;
             // Preserve unattended START pulses: after 45 s, 300 ms down every 9 s.
             if (startPulse)
                 buttons |= 0x0010;
             state.Gamepad.wButtons |= buttons;
             ApplyScriptStick(state, stick1);
-            if (keyboard.leftTrigger) state.Gamepad.bLeftTrigger = 255;
-            if (keyboard.rightTrigger) state.Gamepad.bRightTrigger = 255;
+            if (ownsKeyboard && keyboard.leftTrigger) state.Gamepad.bLeftTrigger = 255;
+            if (ownsKeyboard && keyboard.rightTrigger) state.Gamepad.bRightTrigger = 255;
             caps.Gamepad.wButtons |= 0xF3FF; // supported mapped controls, independent of current presses
             caps.Gamepad.bLeftTrigger = caps.Gamepad.bRightTrigger = 255;
             if (!physical)
             {
                 polling.keyboardEverPressed |= buttons != 0 || keyboard.leftTrigger || keyboard.rightTrigger;
-                connected = polling.keyboardEverPressed || autoStart;
+                connected = dynamic ? ownsKeyboard || autoStart : polling.keyboardEverPressed || autoStart;
                 caps.Type = XINPUT_DEVTYPE_GAMEPAD;
                 caps.SubType = XINPUT_DEVSUBTYPE_GAMEPAD;
+            }
+        }
+        // Availability is not ownership: VS/PAIR checks connected-device count
+        // before showing the join screen. Advertise idle slots with neutral input,
+        // but only START assigns a device and signs in a guest.
+        if (dynamic && user > 0 && !claimed(int(user)) && claimed(0)) {
+            unsigned available = 1; // keyboard is always an available local device
+            for (bool present : polling.physicalConnected) available += present;
+            if (user < available) {
+                connected = true;
+                caps.Type = XINPUT_DEVTYPE_GAMEPAD;
+                caps.SubType = XINPUT_DEVSUBTYPE_GAMEPAD;
+                caps.Gamepad.wButtons = 0xF3FF;
             }
         }
         PublishPad(user, connected, physical, state, caps);
@@ -988,6 +1033,16 @@ int64_t NowMs()
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 } // namespace
+
+bool HostCheatOverlayChord()
+{
+    EnsurePadThread();
+    for (auto& pad : g_pads) {
+        std::lock_guard lock(pad.m);
+        if (pad.connected.load() && (pad.state.Gamepad.wButtons & 0x00C0) == 0x00C0) return true;
+    }
+    return false;
+}
 
 // The system UI's view of the controllers (sys_ui.h): every connected pad's buttons (keyboard
 // included) with the left stick as a D-pad - read even while the game is given neutral input.
@@ -1067,16 +1122,33 @@ PPC_FUNC(__imp__XamInputGetState)
     // r3=userIndex, r4=flags, r5=XINPUT_STATE* out
     EnsurePadThread();
     uint32_t user = ctx.r3.u32, out = ctx.r5.u32;
-    XINPUT_STATE st;
-    if (user > 3 || !out || !g_pads[user].connected.load())
+    XINPUT_STATE st{};
+    const bool sharedMenu = user == 0 && keyboard_keys::SeparatePlayer() && g_sharedMenuInput.load();
+    if (user > 3 || !out || (!g_pads[user].connected.load() && !sharedMenu))
     {
         ctx.r3.u32 = 0x48F;
         return;
     }
     {
         std::lock_guard lk(g_pads[user].m);
-        st = g_pads[user].state;
+        if (g_pads[user].connected.load()) st = g_pads[user].state;
     }
+    // Main/options navigation accepts either joined player. Combat and character
+    // selection retain their own snapshots; never merge pads in an unknown frame.
+    if (user == 0 && keyboard_keys::SeparatePlayer() && g_sharedMenuInput.load())
+        for (unsigned other = 1; other < 4; ++other) {
+            std::lock_guard lk(g_pads[other].m);
+            if (!g_pads[other].connected.load()) continue;
+            const auto& peer = g_pads[other].state;
+            st.dwPacketNumber += peer.dwPacketNumber;
+            st.Gamepad.wButtons |= peer.Gamepad.wButtons;
+            st.Gamepad.bLeftTrigger = (std::max)(st.Gamepad.bLeftTrigger, peer.Gamepad.bLeftTrigger);
+            st.Gamepad.bRightTrigger = (std::max)(st.Gamepad.bRightTrigger, peer.Gamepad.bRightTrigger);
+            if (std::abs(int(peer.Gamepad.sThumbLX)) > std::abs(int(st.Gamepad.sThumbLX))) st.Gamepad.sThumbLX = peer.Gamepad.sThumbLX;
+            if (std::abs(int(peer.Gamepad.sThumbLY)) > std::abs(int(st.Gamepad.sThumbLY))) st.Gamepad.sThumbLY = peer.Gamepad.sThumbLY;
+        }
+    if (cheat_overlay::ConsumeChord() && (st.Gamepad.wButtons & 0x00C0) == 0x00C0)
+        st.Gamepad.wButtons &= ~uint16_t(0x00C0);
     if (SysUiOwnsInput())
         st.Gamepad = XINPUT_GAMEPAD{};          // a system screen has the controller
     else if (SysUiTitleWantsProfile())

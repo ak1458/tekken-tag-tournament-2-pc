@@ -22,6 +22,7 @@
 #include "bounded_format.h"
 #include "timeline.h"
 #include "display_settings.h"
+#include "display_devices.h"
 #include "sys_ui.h"
 #include <algorithm>
 #include <atomic>
@@ -267,7 +268,7 @@ static void ApplyWindowMode(HWND wnd)
     const display_settings::Resolution r = display_settings::GetResolution();
     MONITORINFO mi{};
     mi.cbSize = sizeof(mi);
-    GetMonitorInfoA(MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST), &mi);
+    GetMonitorInfoA(display_devices::Resolve(display_settings::GetMonitorDevice(),wnd), &mi);
     if (mode == display_settings::Windowed)
     {
         const DWORD style = WS_OVERLAPPEDWINDOW | WS_VISIBLE;

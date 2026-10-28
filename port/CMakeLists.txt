@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(tekken_recomp CXX)
+if(WIN32)
+    add_subdirectory(src/launcher)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

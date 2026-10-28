@@ -9,6 +9,14 @@
 
 namespace keyboard_keys {
 
+// [Keyboard] SeparatePlayer=1 enables first-press device ownership.
+// The next device joins with Start. Read once at startup; restart after changing.
+bool SeparatePlayer();
+// [Keyboard] SOCD=0 original, 1 neutral, 2 up priority, 3 last input.
+int SOCD();
+bool DPadOnly();
+int StickDeadzone();
+
 enum Control : int { Up, Down, Left, Right, A, B, X, Y, LB, RB, LT, RT, LS, RS, Start, Back, Count };
 
 // The control's key (virtual-key code, 0 = none).

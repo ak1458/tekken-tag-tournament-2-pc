@@ -3,7 +3,7 @@
 //   Mode=0|1|2            (windowed, borderless, fullscreen)
 //   Resolution=1920x1080
 //   Sharpness=0..10       (0 = off)
-//   AntiAliasing=0|1      (off, FXAA)
+//   AntiAliasing=0|1|2    (off, FXAA, SMAA 1x high)
 //   TextureFilter=0..4    (the game's own, anisotropic 2x / 4x / 8x / 16x)
 //   VSync=1|0             (frames at the display's refresh / at once)
 //   Shadows=1|0           (cast shadows drawn / not)
@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <mutex>
 #include <string>
@@ -30,12 +31,17 @@ namespace {
 std::mutex g_mutex;
 bool g_loaded = false;
 int g_mode = Windowed;
+std::wstring g_monitorDevice;
 int g_resolution = 0;
 bool g_inputDelay = false;
 int g_netcode = NetStandard;
 int g_customDelay = 1;
 int g_customRollback = kMaxRollback;
 std::atomic<int> g_sharpness{ 0 }, g_antiAliasing{ 0 }, g_textureFilter{ 0 }, g_vsync{ 1 }, g_shadows{ 1 };
+std::atomic<int> g_motionBlur{-1};
+std::atomic<int> g_refreshRate{0};
+std::atomic<int> g_mipBias{0},g_renderScale{0},g_performanceStats{0};
+std::atomic<int> g_brightness{100},g_gamma{100},g_contrast{100},g_gpuAdapter{-1};
 std::atomic<bool> g_loadedFlag{ false };
 std::atomic<uint32_t> g_generation{ 0 };
 
@@ -55,6 +61,9 @@ void LoadLocked()
     if (g_loaded) return;
     g_loaded = true;
     const std::string ini = IniPath();
+    char monitor[128]{};
+    GetPrivateProfileStringA("Display","MonitorDevice","",monitor,128,ini.c_str());
+    g_monitorDevice.assign(monitor,monitor+std::strlen(monitor));
     g_mode = std::clamp<int>(GetPrivateProfileIntA("Display", "Mode", Windowed, ini.c_str()), Windowed, Fullscreen);
     char res[32] = {};
     GetPrivateProfileStringA("Display", "Resolution", "1280x720", res, sizeof(res), ini.c_str());
@@ -75,6 +84,16 @@ void LoadLocked()
     g_textureFilter = std::clamp<int>(GetPrivateProfileIntA("Display", "TextureFilter", 0, ini.c_str()), 0, kMaxTextureFilter);
     g_vsync = GetPrivateProfileIntA("Display", "VSync", 1, ini.c_str()) != 0 ? 1 : 0;
     g_shadows = GetPrivateProfileIntA("Display", "Shadows", 1, ini.c_str()) != 0 ? 1 : 0;
+    g_motionBlur=std::clamp<int>(GetPrivateProfileIntA("Display","MotionBlur",-1,ini.c_str()),-1,1);
+    g_refreshRate=std::clamp<int>(GetPrivateProfileIntA("Display","RefreshRate",0,ini.c_str()),0,360);
+    g_mipBias=std::clamp<int>(GetPrivateProfileIntA("Display","TextureMipBias",0,ini.c_str()),0,3);
+    const int scale=GetPrivateProfileIntA("Display","RenderScale",0,ini.c_str());
+    g_renderScale=scale==0?0:std::clamp(scale,50,200);
+    g_performanceStats=std::clamp<int>(GetPrivateProfileIntA("Display","PerformanceStats",0,ini.c_str()),0,2);
+    g_brightness=std::clamp<int>(GetPrivateProfileIntA("Display","Brightness",100,ini.c_str()),50,150);
+    g_gamma=std::clamp<int>(GetPrivateProfileIntA("Display","Gamma",100,ini.c_str()),50,250);
+    g_contrast=std::clamp<int>(GetPrivateProfileIntA("Display","Contrast",100,ini.c_str()),50,150);
+    g_gpuAdapter=std::clamp<int>(GetPrivateProfileIntA("Display","GpuAdapter",-1,ini.c_str()),-1,31);
     g_loadedFlag.store(true, std::memory_order_release);
     std::fprintf(stderr, "[display] image: sharpness %d, anti-aliasing %d, texture filtering %d, vsync %s, shadows %s\n",
                  g_sharpness.load(), g_antiAliasing.load(), g_textureFilter.load(), g_vsync.load() ? "on" : "off",
@@ -87,7 +106,12 @@ void LoadLocked()
 void SaveLocked()
 {
     const std::string ini = IniPath();
+    const std::string monitor(g_monitorDevice.begin(),g_monitorDevice.end());
+    WritePrivateProfileStringA("Display","MonitorDevice",monitor.c_str(),ini.c_str());
     char value[32];
+    const std::pair<const char*,int> extended[]={{"MotionBlur",g_motionBlur.load()},{"RefreshRate",g_refreshRate.load()},{"TextureMipBias",g_mipBias.load()},{"RenderScale",g_renderScale.load()},{"PerformanceStats",g_performanceStats.load()},{"Brightness",g_brightness.load()},{"Gamma",g_gamma.load()},{"Contrast",g_contrast.load()},{"GpuAdapter",g_gpuAdapter.load()}};
+    for(const auto& [key,v]:extended){std::snprintf(value,sizeof(value),"%d",v);WritePrivateProfileStringA("Display",key,value,ini.c_str());}
+
     std::snprintf(value, sizeof(value), "%d", g_mode);
     WritePrivateProfileStringA("Display", "Mode", value, ini.c_str());
     const Resolution r = Resolutions()[g_resolution];
@@ -199,6 +223,29 @@ void SetNetcode(int netcode) { SetInt(g_netcode, netcode, NetStandard, NetCustom
 void SetCustomDelay(int frames) { SetInt(g_customDelay, frames, kMinDelay, kMaxCustomDelay, "custom input delay"); }
 void SetCustomRollback(int frames) { SetInt(g_customRollback, frames, 1, kMaxRollback, "custom rollback"); }
 
+std::wstring GetMonitorDevice(){std::lock_guard<std::mutex> l(g_mutex);LoadLocked();return g_monitorDevice;}
+void SetMonitorDevice(const std::wstring& device){
+    std::lock_guard<std::mutex> l(g_mutex);LoadLocked();
+    if(device==g_monitorDevice)return;g_monitorDevice=device;SaveLocked();g_generation.fetch_add(1);
+}
+int GetMotionBlur(){return GetAtomic(g_motionBlur);}
+void SetMotionBlur(int mode){SetAtomic(g_motionBlur,mode,-1,1,"motion blur");}
+int GetRefreshRate(){return GetAtomic(g_refreshRate);}
+void SetRefreshRate(int hz){const int previous=GetRefreshRate();SetAtomic(g_refreshRate,hz,0,360,"exclusive refresh rate");if(previous!=GetRefreshRate())g_generation.fetch_add(1);}
+int GetTextureMipBias(){return GetAtomic(g_mipBias);}
+int GetRenderScale(){return GetAtomic(g_renderScale);}
+int GetPerformanceStats(){return GetAtomic(g_performanceStats);}
+void SetTextureMipBias(int v){SetAtomic(g_mipBias,v,0,3,"texture mip bias");}
+void SetRenderScale(int v){const int previous=GetRenderScale();SetAtomic(g_renderScale,v==0?0:std::clamp(v,50,200),0,200,"render scale");if(previous!=GetRenderScale())g_generation.fetch_add(1);}
+void SetPerformanceStats(int v){SetAtomic(g_performanceStats,v,0,2,"performance statistics");}
+int GetBrightness(){return GetAtomic(g_brightness);}
+int GetGamma(){return GetAtomic(g_gamma);}
+int GetContrast(){return GetAtomic(g_contrast);}
+int GetGpuAdapter(){return GetAtomic(g_gpuAdapter);}
+void SetBrightness(int v){SetAtomic(g_brightness,v,50,150,"SDR brightness");}
+void SetGamma(int v){SetAtomic(g_gamma,v,50,250,"SDR gamma");}
+void SetContrast(int v){SetAtomic(g_contrast,v,50,150,"SDR contrast");}
+void SetGpuAdapter(int v){SetAtomic(g_gpuAdapter,v,-1,31,"GPU adapter (next launch)");}
 int GetSharpness() { return GetAtomic(g_sharpness); }
 int GetAntiAliasing() { return GetAtomic(g_antiAliasing); }
 int GetTextureFilter() { return GetAtomic(g_textureFilter); }
