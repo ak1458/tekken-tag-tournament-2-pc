@@ -51,6 +51,8 @@ def main():
         assert digest(state / "app/game/tekken.img") == original_image
         assert (state / "app/tekken_recomp.exe").is_file()
         assert (state / "app/TTT2 Launcher.exe").is_file()
+        assert (state / "app/SDL3.dll").is_file()
+        assert (state / "app/LICENSES/SDL-LICENSE.txt").is_file()
         info=json.loads((state / "app/build-info.json").read_text())
         assert (state / "app/LICENSES/SMAA-LICENSE.txt").is_file()
         assert (state / "app/README.txt").is_file()

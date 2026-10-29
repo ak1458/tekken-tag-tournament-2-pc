@@ -3,6 +3,8 @@ from pathlib import Path
 import tempfile,subprocess,os
 from test_vcmpgtuh import ROOT,compile_one
 CODE=r'''
+#include "host_settings.cpp"
+#include "host_settings_windows.cpp"
 #include "display_settings.cpp"
 int main(int argc,char** argv){
  if(argc!=2||display_settings::GetAntiAliasing()!=std::atoi(argv[1]))return 1;

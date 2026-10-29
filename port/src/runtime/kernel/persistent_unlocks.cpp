@@ -1,3 +1,4 @@
+#ifdef _WIN32
 // One-shot grants through TU3's original bulk-acquisition and profile-save
 // routines. No raw save-file or ownership-bit writes. Original online installs
 // are rejected: this action requires the updater's copied, marked preview root.
@@ -171,3 +172,11 @@ void ProcessPending(PPCContext& ctx,uint8_t* base,bool allowMenu) {
     SysUiShowMessageBox(std::move(box));
 }
 }
+
+#else
+#include "persistent_unlocks.h"
+namespace persistent_unlocks {
+bool QueuePermanentUnlocks(){return false;}
+void ProcessPending(PPCContext&,uint8_t*,bool){}
+}
+#endif

@@ -1,5 +1,3 @@
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 #include "display_change_guard.h"
 #include "display_settings.h"
 #include "sys_ui.h"

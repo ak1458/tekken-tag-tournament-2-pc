@@ -1,8 +1,8 @@
 // Keyboard key settings (see keyboard_keys.h). The input poll thread reads the keys, the game's
 // main thread changes them: one atomic per control.
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 #include "keyboard_keys.h"
+#include "host_keycodes.h"
+#include "host_settings.h"
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
@@ -29,27 +29,14 @@ std::atomic<int> g_keys[Count];
 std::once_flag g_loaded;
 std::mutex g_writeMutex;
 
-std::string IniPath()
-{
-    if (const char* e = std::getenv("TTT2_SETTINGS_INI"); e && *e) return e;
-    char dir[MAX_PATH];
-    const DWORD n = GetEnvironmentVariableA("LOCALAPPDATA", dir, sizeof(dir));
-    std::string path = (n && n < sizeof(dir)) ? std::string(dir) : std::string(".");
-    path += "\\TTT2Recomp";
-    CreateDirectoryA(path.c_str(), nullptr);
-    return path + "\\settings.ini";
-}
-
 void Load()
 {
     std::call_once(g_loaded, [] {
-        const std::string ini = IniPath();
         for (int c = 0; c < Count; ++c)
         {
-            char value[32] = {};
-            GetPrivateProfileStringA("Keyboard", kInfo[c].ini, "", value, sizeof(value), ini.c_str());
+            const std::string value = host_settings::Read("Keyboard", kInfo[c].ini, "");
             int vk = kInfo[c].defaultKey;
-            if (*value) vk = int(std::strtol(value, nullptr, 0));
+            if (!value.empty()) vk = int(std::strtol(value.c_str(), nullptr, 0));
             g_keys[c] = (vk >= 0 && vk < 256) ? vk : kInfo[c].defaultKey;
         }
         // Two controls on one key (an edited file): the later one loses the key.
@@ -58,18 +45,17 @@ void Load()
                 if (g_keys[c] && g_keys[c] == g_keys[d]) g_keys[c] = 0;
         std::string line = "[keyboard] keys:";
         for (int c = 0; c < Count; ++c) line += std::string(" ") + kInfo[c].name + "=" + KeyName(g_keys[c]);
-        std::fprintf(stderr, "%s (%s)\n", line.c_str(), ini.c_str());
+        std::fprintf(stderr, "%s\n", line.c_str());
     });
 }
 
 void Save()
 {
-    const std::string ini = IniPath();
     for (int c = 0; c < Count; ++c)
     {
         char value[16];
         std::snprintf(value, sizeof(value), "0x%02X", unsigned(g_keys[c].load()));
-        WritePrivateProfileStringA("Keyboard", kInfo[c].ini, value, ini.c_str());
+        host_settings::Write("Keyboard", kInfo[c].ini, value);
     }
 }
 
@@ -77,14 +63,14 @@ void Save()
 
 bool SeparatePlayer()
 {
-    static const bool separate = GetPrivateProfileIntA("Keyboard", "SeparatePlayer", 0, IniPath().c_str()) == 1;
+    static const bool separate = host_settings::ReadInt("Keyboard", "SeparatePlayer", 0) == 1;
     return separate;
 }
 
 int PlayerOnePreference()
 {
     static const int preference = [] {
-        const unsigned value = GetPrivateProfileIntA("Input", "PlayerOnePreference", 0, IniPath().c_str());
+        const unsigned value = host_settings::ReadInt("Input", "PlayerOnePreference", 0);
         return value <= 2 ? int(value) : 0;
     }();
     return preference;
@@ -93,7 +79,7 @@ int PlayerOnePreference()
 int SOCD()
 {
     static const int mode = [] {
-        const unsigned value = GetPrivateProfileIntA("Keyboard", "SOCD", 0, IniPath().c_str());
+        const unsigned value = host_settings::ReadInt("Keyboard", "SOCD", 0);
         return value <= 3 ? int(value) : 0;
     }();
     return mode;
@@ -101,13 +87,13 @@ int SOCD()
 
 bool DPadOnly()
 {
-    static const bool on = GetPrivateProfileIntA("Input", "DPadOnly", 0, IniPath().c_str()) == 1;
+    static const bool on = host_settings::ReadInt("Input", "DPadOnly", 0) == 1;
     return on;
 }
 int StickDeadzone()
 {
     static const int percent = [] {
-        const unsigned value = GetPrivateProfileIntA("Input", "StickDeadzone", 0, IniPath().c_str());
+        const unsigned value = host_settings::ReadInt("Input", "StickDeadzone", 0);
         return value <= 95 ? int(value) : 0;
     }();
     return percent;
@@ -116,7 +102,7 @@ int StickDeadzone()
 int StickDiagonal()
 {
     static const int percent = [] {
-        const unsigned value = GetPrivateProfileIntA("Input", "StickDiagonal", 0, IniPath().c_str());
+        const unsigned value = host_settings::ReadInt("Input", "StickDiagonal", 0);
         return value <= 100 ? int(value) : 0;
     }();
     return percent;

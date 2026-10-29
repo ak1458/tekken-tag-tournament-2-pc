@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 README="""TTT2 Windows community offline preview — 2026-10-29
 
-This is an unofficial experimental preview based on upstream v0.1.7.
+This is an unofficial experimental preview integrating upstream main 007c523.
 It is NOT an in-place replacement for the official installed game.
 Steam online is not compiled into this preview. Keep the original for online play.
 
@@ -47,6 +47,7 @@ builds. Full online/rollback, multi-monitor and graphics benchmark acceptance
 is incomplete. Unlocks are temporary checks for installed content; missing DLC/assets
 are not supplied. This does not implement all 153 requested graphics technologies.
 
+SDL3 runtime included; licence: LICENSES/SDL-LICENSE.txt.
 SMAA attribution/licence: LICENSES/SMAA-LICENSE.txt and LICENSES/SMAA-README.md.
 The preview updater and ZIP are unsigned. Checksums detect corruption, not publisher
 identity. Download only from the contributor release linked in the pull request.
@@ -70,17 +71,18 @@ def source_identity():
 def stage(output,game,launcher,bootstrap):
     output.mkdir(parents=True,exist_ok=True);(output/'bin').mkdir(exist_ok=True);(output/'LICENSES').mkdir(exist_ok=True)
     import shutil
-    mapping={'bin/game.exe':game,'bin/launcher.exe':launcher,'TTT2 Offline Update.exe':bootstrap,
+    mapping={'bin/game.exe':game,'bin/launcher.exe':launcher,'bin/SDL3.dll':game.parent/'SDL3.dll','TTT2 Offline Update.exe':bootstrap,
+             'LICENSES/SDL-LICENSE.txt':ROOT/'port/third_party/sdl/LICENSE.txt',
              'LICENSES/SMAA-LICENSE.txt':ROOT/'port/third_party/smaa/LICENSE.txt',
              'LICENSES/SMAA-README.md':ROOT/'port/third_party/smaa/README.md'}
     for name,path in mapping.items():
         if not path.is_file():raise FileNotFoundError(path)
         shutil.copy2(path,output/name)
-    (output/'payload.sha256').write_text(''.join(digest(output/'bin'/name)+'  '+name+'\n' for name in ('game.exe','launcher.exe')))
+    (output/'payload.sha256').write_text(''.join(digest(output/'bin'/name)+'  '+name+'\n' for name in ('game.exe','launcher.exe','SDL3.dll')))
     (output/'README.txt').write_text(README,encoding='utf-8')
     revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
-    (output/'build-info.json').write_text(json.dumps({'version':'v0.1.7-community.1','build_label':'2026-10-29-r2','base':'v0.1.7','source_revision':revision,
-        **source_identity(),'payload_sha256':{'game.exe':digest(game),'launcher.exe':digest(launcher)},
+    (output/'build-info.json').write_text(json.dumps({'version':'v0.1.7-community.1','build_label':'2026-10-29-r2','base':'upstream-main-007c523','source_revision':revision,
+        **source_identity(),'payload_sha256':{'game.exe':digest(game),'launcher.exe':digest(launcher),'SDL3.dll':digest(game.parent/'SDL3.dll')},
         'platform':'windows-x64','steam_enabled':False,'experimental':True,'game_assets_included':False},indent=2)+'\n')
     return list(mapping)+['payload.sha256','README.txt','build-info.json']
 

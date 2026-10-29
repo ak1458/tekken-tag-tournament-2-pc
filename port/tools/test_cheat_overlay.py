@@ -8,7 +8,9 @@ CODE=r'''
 ULONGLONG testClock=0;
 ULONGLONG TestClock(){return testClock;}
 #define GetTickCount64 TestClock
-#include "cheat_overlay.cpp"
+#include "host_settings.cpp"
+#include "host_settings_windows.cpp"
+@PRODUCTION@
 #include <cstdio>
 namespace offline_cheats { int health=0;bool money=false,gate=false,unlock=false; int HealthSides(){return health;}void SetHealthSides(int v){health=v;}bool InfiniteMoney(){return money;}void SetInfiniteMoney(bool v){money=v;}void SetOfflineMenu(bool v){gate=v;}bool UnlockContent(){return unlock;}void SetUnlockContent(bool v){unlock=v;} }
 namespace persistent_unlocks{unsigned queued=0;bool QueuePermanentUnlocks(){++queued;return true;}}
@@ -80,6 +82,9 @@ printf("PASS %u overlay checks: chord edges, busy UI, online closure, stale call
 }
 '''
 with tempfile.TemporaryDirectory(prefix='ttt2-overlay-') as temp:
- folder=Path(temp);exe=compile_one(folder,'overlay',CODE,[ROOT/'port/src/runtime/kernel'])
+ folder=Path(temp)
+ source=(ROOT/'port/src/runtime/kernel/cheat_overlay.cpp').read_text()
+ source=source.replace('uint64_t OverlayNowMs(){return uint64_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());}','uint64_t OverlayNowMs(){return testClock;}')
+ exe=compile_one(folder,'overlay',CODE.replace('@PRODUCTION@',source),[ROOT/'port/src/runtime/kernel'])
  ini=folder/'settings.ini';ini.write_text('[Mods]\nOverlay=1\n')
  subprocess.run([str(exe)],env=dict(os.environ,TTT2_SETTINGS_INI=str(ini)),check=True)

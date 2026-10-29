@@ -22,6 +22,8 @@ extern "C" PPC_FUNC(__imp__sub_8272F190){ctx.r3.u64=0;}
 extern "C" PPC_FUNC(__imp__sub_827308C8){ctx.r3.u64=0;}
 extern "C" PPC_FUNC(__imp__sub_8272F538){ctx.r3.u64=0;}
 @ORIGINAL@
+#include "host_settings.cpp"
+#include "host_settings_windows.cpp"
 #include "offline_cheats.cpp"
 #define CHECK(x) do{++checks;if(!(x)){printf("FAIL %d %s\n",__LINE__,#x);return 1;}}while(0)
 int main(){unsigned checks=0;

@@ -1,5 +1,5 @@
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#include "host_settings.h"
+#include <chrono>
 #include "cheat_overlay.h"
 #include "cheat_overlay_policy.h"
 #include "sys_ui.h"
@@ -13,12 +13,13 @@
 bool XSessionAnyActive();
 namespace cheat_overlay {
 namespace {
+uint64_t OverlayNowMs(){return uint64_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());}
 CheatOverlayChord chord;
 bool owned = false;
 bool reopen = false;
 bool calibrating = false, reopenCalibration = false;
 bool reopenPermanent = false;
-ULONGLONG calibrationUntil = 0;
+uint64_t calibrationUntil = 0;
 int calibrationChoice = 0;
 uint64_t dialogToken = 0;
 std::string lastFrame;
@@ -62,7 +63,7 @@ void OpenCalibration() {
         if (token!=dialogToken) return;
         ++dialogToken; // A callback may answer its own dialog only once.
         owned=false;
-        if (!calibrating || !Enabled() || !CalibrationAllowed() || GetTickCount64()>=calibrationUntil) {
+        if (!calibrating || !Enabled() || !CalibrationAllowed() || OverlayNowMs()>=calibrationUntil) {
             calibrating=false;display_settings::SetCalibrationPattern(false);return;
         }
         if (choice<0 || choice>=7) {
@@ -78,7 +79,7 @@ void OpenCalibration() {
         reopenCalibration=true;
     };
     if (SysUiShowMessageBox(std::move(box))) {
-        owned=true;calibrating=true;calibrationUntil=GetTickCount64()+60000;
+        owned=true;calibrating=true;calibrationUntil=OverlayNowMs()+60000;
         display_settings::SetCalibrationPattern(true);
     }
 }
@@ -116,10 +117,7 @@ void Open() {
 }
 bool Enabled() {
     static const bool enabled = [] {
-        const char* overridePath=std::getenv("TTT2_SETTINGS_INI");
-        char local[MAX_PATH]{};GetEnvironmentVariableA("LOCALAPPDATA",local,MAX_PATH);
-        const std::string path=overridePath&&*overridePath?overridePath:std::string(local)+"\\TTT2Recomp\\settings.ini";
-        return GetPrivateProfileIntA("Mods","Overlay",0,path.c_str())==1;
+        return host_settings::ReadInt("Mods","Overlay",0)==1;
     }();
     return enabled;
 }
@@ -131,7 +129,7 @@ void Frame(const std::string& currentFrame) {
     const bool pressed=chord.Update(HostCheatOverlayChord());
     // Leave reference panels only while their owned dialog is in an allowed
     // front-end menu. Timeout also restores the image after abandoned dialogs.
-    if (calibrating && (!Enabled() || !CalibrationAllowed() || GetTickCount64()>=calibrationUntil ||
+    if (calibrating && (!Enabled() || !CalibrationAllowed() || OverlayNowMs()>=calibrationUntil ||
                         (!SysUiBoxBusy() && !reopenCalibration))) {
         ++dialogToken;
         calibrating=false;reopenCalibration=false;display_settings::SetCalibrationPattern(false);

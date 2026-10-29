@@ -3,7 +3,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-from test_input_polling import CHECKER, ROOT
+from test_polling_harness import CHECKER, ROOT
 from test_vcmpgtuh import compile_one
 
 CASES = r'''
@@ -83,7 +83,7 @@ def main():
     production=(kernel/'kernel_xam.cpp').read_text(encoding='utf-8-sig')
     production=production[production.index('struct PadSnapshot'):production.index('void EnsurePadThread')]
     prefix='#include "direction_filter.h"\n'+CHECKER[:CHECKER.index('int main()')]
-    prefix=prefix.replace('@KEYS@', 'std::atomic<uint32_t> g_usedUsers{0};\nbool User0SignedIn(){return true;}\nstd::string UserName(unsigned){return "test";}\nvoid XamNotifyEnqueueEvent(unsigned,unsigned){}\n'+(kernel/'keyboard_keys.cpp').read_text(encoding='utf-8-sig'))
+    prefix=prefix.replace('@KEYS@', 'std::atomic<uint32_t> g_usedUsers{0};\nbool User0SignedIn(){return true;}\nstd::string UserName(unsigned){return "test";}\nvoid XamNotifyEnqueueEvent(unsigned,unsigned){}\n'+'#include "host_settings.cpp"\n#include "host_settings_windows.cpp"\n'+(kernel/'keyboard_keys.cpp').read_text(encoding='utf-8-sig'))
     source=prefix.replace('@PRODUCTION@',production)+CASES
     with tempfile.TemporaryDirectory(prefix='ttt2-separate-input-') as temp:
         folder=Path(temp);exe=compile_one(folder,'separate_input',source,[kernel])

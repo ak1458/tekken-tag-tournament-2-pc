@@ -3,6 +3,8 @@ import os, subprocess, tempfile
 from pathlib import Path
 from test_vcmpgtuh import ROOT,compile_one
 CODE=r'''
+#include "host_settings.cpp"
+#include "host_settings_windows.cpp"
 #include "display_settings.cpp"
 #include <cstdio>
 using namespace display_settings;

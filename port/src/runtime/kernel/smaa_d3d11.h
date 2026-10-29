@@ -2,7 +2,11 @@
 // SMAA 1x, high preset. Post-process only; no temporal jitter or simulation changes.
 #include <d3d11.h>
 #include <d3dcompiler.h>
+#if defined(__linux__)
+#include "dxvk_native_com_ptr.h"
+#else
 #include <wrl/client.h>
+#endif
 #include <stdexcept>
 #include <string>
 #include <cstring>

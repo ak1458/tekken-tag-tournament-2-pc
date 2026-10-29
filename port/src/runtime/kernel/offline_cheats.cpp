@@ -3,8 +3,7 @@
 // subtracts r4 damage and updates recoverable health; +0 is fighter index,
 // whose low bit is the side (also used by the original regeneration routine).
 // Intercept on the game thread, never scan or modify save files.
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#include "host_settings.h"
 #include "kernel_shared.h"
 #include "offline_cheats.h"
 #include <atomic>
@@ -18,21 +17,16 @@ extern "C" PPC_FUNC(__imp__sub_8265F5D8);
 namespace offline_cheats {
 namespace {
 std::atomic<bool> offlineMenu{false};
-std::string Ini() {
-    if (const char* p=std::getenv("TTT2_SETTINGS_INI"); p&&*p) return p;
-    char local[MAX_PATH]{}; GetEnvironmentVariableA("LOCALAPPDATA",local,MAX_PATH);
-    return std::string(local)+"\\TTT2Recomp\\settings.ini";
-}
 std::atomic<int>& Health() {
-    static std::atomic<int> value{std::clamp<int>(GetPrivateProfileIntA("Mods","InfiniteHealth",0,Ini().c_str()),0,3)};
+    static std::atomic<int> value{std::clamp<int>(host_settings::ReadInt("Mods","InfiniteHealth",0),0,3)};
     return value;
 }
 std::atomic<bool>& Money() {
-    static std::atomic<bool> value{GetPrivateProfileIntA("Mods","InfiniteMoney",0,Ini().c_str())==1};
+    static std::atomic<bool> value{host_settings::ReadInt("Mods","InfiniteMoney",0)==1};
     return value;
 }
 std::atomic<bool>& Unlock() {
-    static std::atomic<bool> value{GetPrivateProfileIntA("Mods","UnlockContent",0,Ini().c_str())==1};
+    static std::atomic<bool> value{host_settings::ReadInt("Mods","UnlockContent",0)==1};
     return value;
 }
 }
@@ -41,16 +35,16 @@ bool InfiniteMoney() { return Money().load(); }
 bool UnlockContent() { return Unlock().load(); }
 void SetUnlockContent(bool enabled) {
     Unlock().store(enabled);
-    WritePrivateProfileStringA("Mods","UnlockContent",enabled?"1":"0",Ini().c_str());
+    host_settings::Write("Mods","UnlockContent",enabled?"1":"0");
 }
 void SetInfiniteMoney(bool enabled) {
     Money().store(enabled);
-    WritePrivateProfileStringA("Mods","InfiniteMoney",enabled?"1":"0",Ini().c_str());
+    host_settings::Write("Mods","InfiniteMoney",enabled?"1":"0");
 }
 void SetHealthSides(int sides) {
     sides=std::clamp(sides,0,3); Health().store(sides);
     const std::string value=std::to_string(sides);
-    WritePrivateProfileStringA("Mods","InfiniteHealth",value.c_str(),Ini().c_str());
+    host_settings::Write("Mods","InfiniteHealth",value.c_str());
 }
 bool Allowed() { return offlineMenu.load() && !XSessionAnyActive(); }
 void SetOfflineMenu(bool offline) { offlineMenu.store(offline); }

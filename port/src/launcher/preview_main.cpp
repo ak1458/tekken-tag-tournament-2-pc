@@ -44,6 +44,8 @@ struct EmbeddedPackage {
         std::error_code ignored;
         fs::remove(dir/L"bin"/L"game.exe",ignored);
         fs::remove(dir/L"bin"/L"launcher.exe",ignored);
+        fs::remove(dir/L"bin"/L"SDL3.dll",ignored);
+        fs::remove(dir/L"LICENSES"/L"SDL-LICENSE.txt",ignored);
         fs::remove(dir/L"payload.sha256",ignored);
         fs::remove(dir/L"README.txt",ignored);
         fs::remove(dir/L"build-info.json",ignored);
@@ -80,6 +82,8 @@ struct EmbeddedPackage {
         Extract(105,dir/L"build-info.json");
         Extract(106,dir/L"LICENSES"/L"SMAA-LICENSE.txt");
         Extract(107,dir/L"LICENSES"/L"SMAA-README.md");
+        Extract(108,dir/L"bin"/L"SDL3.dll");
+        Extract(109,dir/L"LICENSES"/L"SDL-LICENSE.txt");
     }
 };
 #endif
@@ -135,10 +139,10 @@ std::map<std::wstring,std::string> Payload(const fs::path& package){
     while(input>>digest>>name){
         Require(digest.size()==64&&digest.find_first_not_of("0123456789abcdef")==std::string::npos,"Invalid package checksum file.");
         // Spaces are not used in payload names; the launcher is renamed on install.
-        Require(name=="game.exe"||name=="launcher.exe","Unexpected payload filename.");
+        Require(name=="game.exe"||name=="launcher.exe"||name=="SDL3.dll","Unexpected payload filename.");
         Require(expected.emplace(std::wstring(name.begin(),name.end()),digest).second,"Duplicate payload entry.");
     }
-    Require(input.eof()&&expected.size()==2,"Incomplete package checksum file.");
+    Require(input.eof()&&expected.size()==3,"Incomplete package checksum file.");
     for(const auto& [name,sum]:expected)Require(Hash(package/L"bin"/name,BCRYPT_SHA256_ALGORITHM)==sum,"Package checksum mismatch. Download and extract it again.");
     return expected;
 }
@@ -191,9 +195,11 @@ void Prepare(const fs::path& package,const fs::path& install,const fs::path& sta
     ReplaceCopy(package/L"bin"/L"launcher.exe",app/L"TTT2 Launcher.exe");
     Require(Hash(app/L"tekken_recomp.exe",BCRYPT_SHA256_ALGORITHM)==payload.at(L"game.exe") &&
             Hash(app/L"TTT2 Launcher.exe",BCRYPT_SHA256_ALGORITHM)==payload.at(L"launcher.exe"),"Installed preview checksum mismatch. Close the game and run the updater again.");
+    ReplaceCopy(package/L"bin"/L"SDL3.dll",app/L"SDL3.dll");
+    Require(Hash(app/L"SDL3.dll",BCRYPT_SHA256_ALGORITHM)==payload.at(L"SDL3.dll"),"Installed SDL runtime checksum mismatch.");
     // Standalone and ZIP updates retain the same provenance and notices locally.
     PlainDirectory(app/L"LICENSES");fs::create_directories(app/L"LICENSES");
-    for(const wchar_t* name:{L"README.txt",L"build-info.json",L"LICENSES/SMAA-LICENSE.txt",L"LICENSES/SMAA-README.md"}) {
+    for(const wchar_t* name:{L"README.txt",L"build-info.json",L"LICENSES/SMAA-LICENSE.txt",L"LICENSES/SMAA-README.md",L"LICENSES/SDL-LICENSE.txt"}) {
         const auto target=app/name;
         const DWORD attrs=GetFileAttributesW(target.c_str());
         Require(attrs==INVALID_FILE_ATTRIBUTES||!(attrs&FILE_ATTRIBUTE_REPARSE_POINT),"Preview documentation must not contain linked files.");
