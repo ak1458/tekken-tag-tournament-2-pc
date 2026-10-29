@@ -8,6 +8,9 @@ CODE=r'''
 using namespace display_settings;
 #define CHECK(x) do{++checks;if(!(x)){printf("FAIL %d\n",__LINE__);return 1;}}while(0)
 int main(int argc,char**){unsigned checks=0;
+CHECK(!GetCalibrationPattern()); // transient reference must start disabled, including restart
+SetCalibrationPattern(true);CHECK(GetCalibrationPattern());
+SetCalibrationPattern(false);CHECK(!GetCalibrationPattern());
 if(argc>1){CHECK(GetBrightness()==150);CHECK(GetGamma()==50);CHECK(GetContrast()==150);CHECK(GetGpuAdapter()==31);
  CHECK(GetTextureMipBias()==3);CHECK(GetRenderScale()==50);CHECK(GetPerformanceStats()==2);CHECK(GetMonitorDevice()==L"\\\\.\\DISPLAY1");}
 else {

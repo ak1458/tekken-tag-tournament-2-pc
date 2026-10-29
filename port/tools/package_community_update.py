@@ -3,7 +3,7 @@ import argparse,hashlib,json,subprocess,zipfile
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[2]
-README="""TTT2 Windows community offline preview — 2026-10-28
+README="""TTT2 Windows community offline preview — 2026-10-29
 
 This is an unofficial experimental preview based on upstream v0.1.7.
 It is NOT an in-place replacement for the official installed game.
@@ -12,7 +12,8 @@ Steam online is not compiled into this preview. Keep the original for online pla
 1. Close the game and launcher. Extract this entire ZIP into an ordinary folder.
 2. Open "TTT2 Offline Update.exe".
 3. Select your EXISTING "Tekken Tag Tournament 2.exe" when asked.
-4. The update checks the USA/Europe TU3 image, checks payload hashes, copies your
+4. Choose updated offline play or the original game for online play. The offline
+   update checks the USA/Europe TU3 image, checks payload hashes, copies your
    existing settings and saves into a separate preview folder, then opens the launcher.
 5. Use the launcher to select input, graphics and offline cheats, then Play Game.
    Reopen "TTT2 Offline Update.exe" for subsequent preview sessions.
@@ -25,16 +26,24 @@ are included in this download. A small boot image and VC runtime DLLs are copied
 locally from your existing installation; game assets are reused in place.
 
 Preview state: %LOCALAPPDATA%/TTT2RecompCommunityPreview/v0.1.7-community.1
-Returning to the original: close the preview and use your normal game shortcut.
+Returning to the original: close the preview and choose the original game in the
+updater, or use your normal game shortcut. The original keeps its own saves.
 
 Included: native launcher with original generated arena art; first-Start player
-ownership; separate keyboard/controller joining; SOCD/deadzone; SMAA 1x; actual SDR
+ownership and Player 1 preference; separate keyboard/controller joining;
+SOCD/deadzone/analog diagonal tuning; SMAA 1x; in-game SDR reference panels;
+actual SDR
 calibration, adapter/monitor/exclusive-refresh choices, render scale/mip detail,
 optional performance readout; L3+R3 offline health/money/content controls.
+The tools panel also offers a separate Save item unlocks action in main/options
+menus. It accepts only marked copied-preview saves, creates a backup first, calls
+the game's bulk item/panel/print-group grants, and requests its normal profile save.
+Live save/restart acceptance remains pending. The temporary unlock toggle stays
+temporary. Analog-only input and all-category permanent coverage remain unfinished.
 
-Health's latest address-guard fix passes 238 automated checks and a negative control;
-live fight acceptance of that corrected binary remains pending. Money/unlock/overlay
-were user-tested. Full online/rollback, multi-monitor and graphics benchmark acceptance
+Health's address-guard fix was user-confirmed in an earlier binary. The new rebuild
+requires fresh fight acceptance. Money/unlock/overlay were user-tested in earlier
+builds. Full online/rollback, multi-monitor and graphics benchmark acceptance
 is incomplete. Unlocks are temporary checks for installed content; missing DLC/assets
 are not supplied. This does not implement all 153 requested graphics technologies.
 
@@ -45,6 +54,18 @@ identity. Download only from the contributor release linked in the pull request.
 
 def digest(path):
     with path.open('rb') as stream:return hashlib.file_digest(stream,'sha256').hexdigest()
+
+def source_identity():
+    # Include current source contents, because HEAD alone misidentifies an
+    # uncommitted build. Git's allowlist excludes generated PPC and game data.
+    names=subprocess.check_output(['git','ls-files','-z','--cached','--others','--exclude-standard'],cwd=ROOT).decode('utf-8').split('\0')
+    tree=hashlib.sha256()
+    for name in sorted(set(filter(None,names))):
+        path=ROOT/name
+        if path.is_file():
+            tree.update(name.encode('utf-8')+b'\0'+digest(path).encode('ascii')+b'\n')
+    dirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT).strip())
+    return {'source_tree_sha256':tree.hexdigest(),'source_dirty':dirty}
 
 def stage(output,game,launcher,bootstrap):
     output.mkdir(parents=True,exist_ok=True);(output/'bin').mkdir(exist_ok=True);(output/'LICENSES').mkdir(exist_ok=True)
@@ -58,7 +79,8 @@ def stage(output,game,launcher,bootstrap):
     (output/'payload.sha256').write_text(''.join(digest(output/'bin'/name)+'  '+name+'\n' for name in ('game.exe','launcher.exe')))
     (output/'README.txt').write_text(README,encoding='utf-8')
     revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
-    (output/'build-info.json').write_text(json.dumps({'version':'v0.1.7-community.1','base':'v0.1.7','source_revision':revision,
+    (output/'build-info.json').write_text(json.dumps({'version':'v0.1.7-community.1','build_label':'2026-10-29-r2','base':'v0.1.7','source_revision':revision,
+        **source_identity(),'payload_sha256':{'game.exe':digest(game),'launcher.exe':digest(launcher)},
         'platform':'windows-x64','steam_enabled':False,'experimental':True,'game_assets_included':False},indent=2)+'\n')
     return list(mapping)+['payload.sha256','README.txt','build-info.json']
 

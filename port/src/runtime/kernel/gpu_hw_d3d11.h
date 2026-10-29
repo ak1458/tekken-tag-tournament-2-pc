@@ -1638,6 +1638,13 @@ private:
             if (v & 2)
                 body += "  uint3 i = (uint3)round(saturate(c.rgb) * 255.0);\n"
                         "  c.rgb = float3(lut.Load(int3(i.r, 0, 0)).r, lut.Load(int3(i.g, 0, 0)).g, lut.Load(int3(i.b, 0, 0)).b);\n";
+            // Reference code values enter immediately before the same SDR transform
+            // as the game image. Side panels leave the guest dialog readable.
+            body += "  if(reserved>0.5) { float2 uv=(pos.xy-origin)/srcSize; "
+                    "if(uv.y>0.12 && uv.y<0.88) { float row=min(7.0,floor((uv.y-0.12)/0.76*8.0)); "
+                    "if(uv.x>0.02 && uv.x<0.18) c.rgb=(row*4.0)/255.0; "
+                    "if(uv.x>0.82 && uv.x<0.98) c.rgb=(227.0+row*4.0)/255.0; } "
+                    "if(uv.y>0.03 && uv.y<0.08 && uv.x>0.2 && uv.x<0.8) c.rgb=saturate((uv.x-0.2)/0.6); }\n";
             body += "  if(brightness!=1 || gamma!=1 || contrast!=1) { c.rgb=saturate((c.rgb-0.5)*contrast+0.5); c.rgb=pow(saturate(c.rgb*brightness),1.0/gamma); }\n";
             body += "  return float4(c.rgb, 1); }\n";
             displayPs_[v] = PresentShader(body, "ttt2 present display ps");
@@ -1771,6 +1778,7 @@ private:
         adjusted.brightness=display_settings::GetBrightness()/100.0f;
         adjusted.gamma=display_settings::GetGamma()/100.0f;
         adjusted.contrast=display_settings::GetContrast()/100.0f;
+        adjusted.reserved=display_settings::GetCalibrationPattern()?1.0f:0.0f;
         context_->UpdateSubresource(presentCb_.Get(), 0, nullptr, &adjusted, 0, 0);
         context_->OMSetRenderTargets(1, &rtv, nullptr);
         context_->RSSetViewports(1, &vp);

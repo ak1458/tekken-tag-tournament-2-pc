@@ -41,6 +41,9 @@ int GetTextureMipBias(); int GetRenderScale(); int GetPerformanceStats();
 void SetTextureMipBias(int value); void SetRenderScale(int percent); void SetPerformanceStats(int mode);
 int GetBrightness(); int GetGamma(); int GetContrast(); int GetGpuAdapter();
 void SetBrightness(int value); void SetGamma(int value); void SetContrast(int value); void SetGpuAdapter(int index);
+// Transient in-game reference panels, never persisted or enabled at startup.
+bool GetCalibrationPattern();
+void SetCalibrationPattern(bool enabled);
 int GetSharpness();
 int GetAntiAliasing();
 int GetTextureFilter();

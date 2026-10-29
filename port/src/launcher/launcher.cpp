@@ -22,7 +22,7 @@
 
 namespace {
 namespace settings = display_settings;
-enum : int { Browse = 100, Save, Play, Mode, Resolution, AA, Sharpness, Filter, VSync, Shadows, Delay, GamePath, InputLayout, SOCD, StickMode, Deadzone, Tabs, Preset, Defaults, GraphicsTab, InputTab, CheatsTab, Overlay, InfiniteHealth, InfiniteMoney, UnlockContent, AdvancedTab, Brightness, Gamma, Contrast, GpuAdapter, Monitor, ColorDefaults, QualityTab, RefreshRate, TextureQuality, RenderScale, PerformanceStats, MotionBlur };
+enum : int { Browse = 100, Save, Play, Mode, Resolution, AA, Sharpness, Filter, VSync, Shadows, Delay, GamePath, InputLayout, SOCD, StickMode, Deadzone, Tabs, Preset, Defaults, GraphicsTab, InputTab, CheatsTab, Overlay, InfiniteHealth, InfiniteMoney, UnlockContent, AdvancedTab, Brightness, Gamma, Contrast, GpuAdapter, Monitor, ColorDefaults, QualityTab, RefreshRate, TextureQuality, RenderScale, PerformanceStats, MotionBlur, CalibrationPattern, PlayerOnePreference, StickDiagonal };
 HWND window;
 HFONT font;
 int dpi = 96;
@@ -121,6 +121,44 @@ void StagePreset(int preset) {
     Select(Preset, preset);
     UpdateRefreshRates();
 }
+void StageGraphicsDefaults() {
+    StagePreset(0);
+    Select(Mode,0);Select(VSync,1);Select(GpuAdapter,0);Select(Monitor,0);
+    Select(PerformanceStats,0);Select(MotionBlur,0);
+    UpdateRefreshRates();Select(RefreshRate,0);
+}
+LRESULT CALLBACK CalibrationProc(HWND hwnd,UINT message,WPARAM wParam,LPARAM lParam) {
+    if(message==WM_KEYDOWN&&wParam==VK_ESCAPE){DestroyWindow(hwnd);return 0;}
+    if(message==WM_GETMINMAXINFO){auto* limits=reinterpret_cast<MINMAXINFO*>(lParam);limits->ptMinTrackSize={Px(500),Px(260)};return 0;}
+    if(message==WM_PAINT){
+        PAINTSTRUCT ps{};HDC dc=BeginPaint(hwnd,&ps);RECT client{};GetClientRect(hwnd,&client);
+        HBRUSH background=CreateSolidBrush(RGB(18,18,18));FillRect(dc,&client,background);DeleteObject(background);
+        SetBkMode(dc,TRANSPARENT);SetTextColor(dc,RGB(235,235,235));
+        HGDIOBJ old=SelectObject(dc,GetStockObject(DEFAULT_GUI_FONT));
+        RECT title{20,15,client.right-20,75};
+        DrawTextW(dc,L"SDR DISPLAY REFERENCE\nAdjust your display so nearby dark and bright squares remain distinguishable.",-1,&title,DT_LEFT|DT_WORDBREAK);
+        const int values[]={0,2,4,8,16,24,32,64,96,128,160,192,224,240,248,252,254,255};
+        const int left=20,right=client.right-20,width=(right-left)/18,top=90,bottom=client.bottom-90;
+        for(int i=0;i<18;++i){
+            const int v=values[i];HBRUSH brush=CreateSolidBrush(RGB(v,v,v));
+            RECT cell{left+i*width,top,i==17?right:left+(i+1)*width,bottom};FillRect(dc,&cell,brush);DeleteObject(brush);
+            RECT label{cell.left,bottom+8,cell.right,bottom+28};const auto text=std::to_wstring(v);
+            DrawTextW(dc,text.c_str(),-1,&label,DT_CENTER|DT_SINGLELINE);
+        }
+        RECT footer{20,client.bottom-45,client.right-20,client.bottom-10};
+        DrawTextW(dc,L"Display reference only: launcher brightness, gamma and contrast apply inside the game. Esc closes.",-1,&footer,DT_LEFT|DT_WORDBREAK);
+        SelectObject(dc,old);EndPaint(hwnd,&ps);return 0;
+    }
+    return DefWindowProcW(hwnd,message,wParam,lParam);
+}
+void ShowCalibrationPattern(){
+    static bool registered=false;
+    if(!registered){WNDCLASSW wc{};wc.lpfnWndProc=CalibrationProc;wc.hInstance=GetModuleHandleW(nullptr);wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.lpszClassName=L"TTT2SdrReference";registered=RegisterClassW(&wc)!=0;}
+    if(!registered){Error(L"Cannot open the display reference.");return;}
+    HWND reference=CreateWindowExW(0,L"TTT2SdrReference",L"SDR display reference",WS_OVERLAPPEDWINDOW|WS_VISIBLE,
+        CW_USEDEFAULT,CW_USEDEFAULT,Px(940),Px(410),window,nullptr,GetModuleHandleW(nullptr),nullptr);
+    if(!reference)Error(L"Cannot open the display reference.");
+}
 bool SteamRunning() {
     HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snapshot == INVALID_HANDLE_VALUE) return false;
@@ -168,13 +206,19 @@ bool Apply() {
     if (!WritePrivateProfileStringW(L"Keyboard", L"SeparatePlayer", Selected(InputLayout) == 1 ? L"1" : L"0", settingsIni.c_str())) {
         Error(L"Could not save the input layout."); return false;
     }
+    const std::wstring playerPreference=std::to_wstring(Selected(PlayerOnePreference));
+    if (!WritePrivateProfileStringW(L"Input",L"PlayerOnePreference",playerPreference.c_str(),settingsIni.c_str())) {
+        Error(L"Could not save the player one preference."); return false;
+    }
     const std::wstring socd = std::to_wstring(Selected(SOCD));
     if (!WritePrivateProfileStringW(L"Keyboard", L"SOCD", socd.c_str(), settingsIni.c_str())) {
         Error(L"Could not save directional input settings."); return false;
     }
     const std::wstring deadzone = std::to_wstring(Selected(Deadzone));
+    const std::wstring diagonal = std::to_wstring(Selected(StickDiagonal));
     if (!WritePrivateProfileStringW(L"Input", L"DPadOnly", Selected(StickMode) == 1 ? L"1" : L"0", settingsIni.c_str()) ||
-        !WritePrivateProfileStringW(L"Input", L"StickDeadzone", deadzone.c_str(), settingsIni.c_str())) {
+        !WritePrivateProfileStringW(L"Input", L"StickDeadzone", deadzone.c_str(), settingsIni.c_str()) ||
+        !WritePrivateProfileStringW(L"Input", L"StickDiagonal", diagonal.c_str(), settingsIni.c_str())) {
         Error(L"Could not save stick settings."); return false;
     }
     if (!WritePrivateProfileStringW(L"Mods", L"Overlay", Selected(Overlay)==1?L"1":L"0", settingsIni.c_str())) {
@@ -263,9 +307,15 @@ void BuildUI() {
     std::vector<std::wstring> deadzones; for(int i=0;i<=95;++i) deadzones.push_back(std::to_wstring(i)+L"%");
     const unsigned dz=GetPrivateProfileIntW(L"Input",L"StickDeadzone",0,settingsIni.c_str());
     Combo(Deadzone,L"Left stick deadzone",274,deadzones,dz<=95?int(dz):0);
-    Add(L"STATIC",L"START TO JOIN",0,0,448,344,550,24);
-    Add(L"STATIC",L"Start with either device to become Player 1. Press Start on a second device to join as Player 2. Your existing bindings stay the same.",0,0,448,378,550,82);
-    Add(L"STATIC",L"Close the game before saving input changes. Changes apply on the next launch.",0,0,448,480,550,58);
+    const unsigned preference=GetPrivateProfileIntW(L"Input",L"PlayerOnePreference",0,settingsIni.c_str());
+    Combo(PlayerOnePreference,L"Player 1 preference",314,{L"First Start (automatic)",L"Keyboard first",L"Controller first"},preference<=2?int(preference):0);
+    std::vector<std::wstring> diagonals{L"Original"};
+    for(int i=1;i<=100;++i) diagonals.push_back(std::to_wstring(i)+L"% axis ratio");
+    const unsigned diagonal=GetPrivateProfileIntW(L"Input",L"StickDiagonal",0,settingsIni.c_str());
+    Combo(StickDiagonal,L"Stick diagonal threshold",354,diagonals,diagonal<=100?int(diagonal):0);
+    Add(L"STATIC",L"Higher diagonal thresholds require more even stick axes. Digital D-pad buttons stay unchanged.",0,0,448,398,550,44);
+    Add(L"STATIC",L"First Start assigns Player 1; a second device joins with Start. A Player 1 preference chooses which device starts first.",0,0,448,452,550,58);
+    Add(L"STATIC",L"Close the game before saving input changes. Restart to apply.",0,0,448,520,550,38);
     controlGroup=3;
     Combo(Overlay,L"L3 + R3 overlay",154,{L"Off",L"On (offline only)"},GetPrivateProfileIntW(L"Mods",L"Overlay",0,settingsIni.c_str())==1);
     Combo(InfiniteHealth,L"Infinite health",198,{L"Off",L"Player 1",L"Player 2",L"Both sides"},std::clamp<int>(GetPrivateProfileIntW(L"Mods",L"InfiniteHealth",0,settingsIni.c_str()),0,3));
@@ -298,6 +348,7 @@ void BuildUI() {
     Combo(Monitor,L"Monitor",330,monitors,monitorSelection);
     Combo(RefreshRate,L"Exclusive refresh rate",374,{L"Automatic / desktop"},0);UpdateRefreshRates();
     Add(L"BUTTON",L"Reset SDR calibration",WS_TABSTOP,ColorDefaults,448,418,242,30);
+    Add(L"BUTTON",L"Show display reference",WS_TABSTOP,CalibrationPattern,704,418,250,30);
     Add(L"STATIC",L"100% keeps the original image. Brightness, contrast and gamma affect the actual SDR presentation pass. HDR is not supported by this renderer.",0,0,448,462,550,62);
     Add(L"STATIC",L"GPU selection applies on launch. Refresh selection affects exclusive fullscreen only. Unsupported refresh modes revert to automatic.",0,0,448,532,550,54);
     controlGroup=5;
@@ -312,7 +363,11 @@ void BuildUI() {
     Add(L"STATIC",L"GAME LOCATION",0,0,448,594,550,24);
     Add(L"EDIT",L"",WS_TABSTOP|WS_BORDER|ES_AUTOHSCROLL|ES_READONLY,GamePath,448,624,462,32);
     Add(L"BUTTON",L"Browse",WS_TABSTOP,Browse,920,624,104,32);
-    Add(L"STATIC",SteamRunning()?L"Steam is running. Online also requires a Steam-enabled game build.":L"Steam is not running. Start it for online play with a compatible build.",0,0,448,672,576,38);
+    wchar_t netMode[32]{};GetEnvironmentVariableW(L"TTT2_NET",netMode,static_cast<DWORD>(std::size(netMode)));
+    const wchar_t* onlineHint=!_wcsicmp(netMode,L"loopback")
+        ?L"Offline preview. For online play, open the updater and choose the original game."
+        :(SteamRunning()?L"Steam is running. Online also requires a Steam-enabled game build.":L"Steam is not running. Start it for online play with a compatible build.");
+    Add(L"STATIC",onlineHint,0,0,448,672,576,38);
     Add(L"BUTTON",L"Save settings",WS_TABSTOP,Save,448,722,170,42);
     Add(L"BUTTON",L"PLAY GAME",WS_TABSTOP|BS_DEFPUSHBUTTON,Play,780,722,244,42);
     Select(Preset, CurrentPreset());
@@ -367,8 +422,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (LOWORD(wp) == GraphicsTab || LOWORD(wp) == InputTab || LOWORD(wp) == CheatsTab || LOWORD(wp)==AdvancedTab || LOWORD(wp)==QualityTab) {
                 activePage=LOWORD(wp)==GraphicsTab?0:LOWORD(wp)==InputTab?1:LOWORD(wp)==CheatsTab?2:LOWORD(wp)==AdvancedTab?3:4;ShowTab();
             }
-            if (LOWORD(wp) == Defaults) { StagePreset(0);Select(TextureQuality,0);Select(RenderScale,0);Select(Brightness,10);Select(Gamma,10);Select(Contrast,10); }
+            if (LOWORD(wp) == Defaults) StageGraphicsDefaults();
             if (LOWORD(wp)==ColorDefaults) {Select(Brightness,10);Select(Gamma,10);Select(Contrast,10);Select(Preset,CurrentPreset());}
+            if (LOWORD(wp)==CalibrationPattern) ShowCalibrationPattern();
             if (LOWORD(wp) == Browse) PickGame();
             if (LOWORD(wp) == Save && Apply()) MessageBoxW(window, L"Settings saved.", L"TTT2 Launcher", MB_OK);
             if (LOWORD(wp) == Play) Launch();

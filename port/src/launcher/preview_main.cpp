@@ -24,6 +24,65 @@ namespace {
 constexpr wchar_t kMarker[]=L".ttt2-community-preview-v1";
 constexpr char kImageSha1[]="66adbc1a7744ec840a3ae8e51f8aeb677140d789";
 void Require(bool ok,const char* message){if(!ok)throw std::runtime_error(message);}
+struct UpdateLock {
+    HANDLE handle{};
+    UpdateLock(){
+        handle=CreateMutexW(nullptr,FALSE,L"Local\\TTT2CommunityPreviewUpdate");
+        Require(handle!=nullptr,"Cannot lock the preview updater.");
+        const DWORD wait=WaitForSingleObject(handle,0);
+        if(wait!=WAIT_OBJECT_0 && wait!=WAIT_ABANDONED){CloseHandle(handle);handle=nullptr;throw std::runtime_error("Another preview update is running. Wait for it to finish.");}
+    }
+    ~UpdateLock(){if(handle){ReleaseMutex(handle);CloseHandle(handle);}}
+};
+#ifdef TTT2_EMBEDDED_PREVIEW
+// Extract the fixed embedded payloads into a newly created temporary
+// directory. The existing updater performs its normal checksum validation.
+struct EmbeddedPackage {
+    fs::path dir;
+    ~EmbeddedPackage() {
+        if(dir.empty()) return;
+        std::error_code ignored;
+        fs::remove(dir/L"bin"/L"game.exe",ignored);
+        fs::remove(dir/L"bin"/L"launcher.exe",ignored);
+        fs::remove(dir/L"payload.sha256",ignored);
+        fs::remove(dir/L"README.txt",ignored);
+        fs::remove(dir/L"build-info.json",ignored);
+        fs::remove(dir/L"LICENSES"/L"SMAA-LICENSE.txt",ignored);
+        fs::remove(dir/L"LICENSES"/L"SMAA-README.md",ignored);
+        fs::remove(dir/L"LICENSES",ignored);
+        fs::remove(dir/L"bin",ignored);
+        fs::remove(dir,ignored);
+    }
+    void Extract(int id,const fs::path& path) {
+        HRSRC resource=FindResourceW(nullptr,MAKEINTRESOURCEW(id),RT_RCDATA);
+        Require(resource!=nullptr,"An embedded update file is missing.");
+        HGLOBAL data=LoadResource(nullptr,resource);
+        DWORD size=SizeofResource(nullptr,resource);
+        const void* bytes=data?LockResource(data):nullptr;
+        Require(bytes&&size,"An embedded update file is empty.");
+        std::ofstream file(path,std::ios::binary|std::ios::trunc);
+        file.write(static_cast<const char*>(bytes),size);
+        Require(bool(file),"Cannot extract the update files.");
+    }
+    void Prepare() {
+        wchar_t folder[MAX_PATH]{},name[MAX_PATH]{};
+        Require(GetTempPathW(MAX_PATH,folder)>0,"Cannot locate the temporary folder.");
+        Require(GetTempFileNameW(folder,L"tt2",0,name)!=0,"Cannot create an update staging folder.");
+        Require(DeleteFileW(name)!=0,"Cannot create an update staging folder.");
+        Require(CreateDirectoryW(name,nullptr)!=0,"Cannot create an update staging folder.");
+        dir=name;
+        fs::create_directory(dir/L"bin");
+        Extract(101,dir/L"bin"/L"game.exe");
+        Extract(102,dir/L"bin"/L"launcher.exe");
+        Extract(103,dir/L"payload.sha256");
+        fs::create_directory(dir/L"LICENSES");
+        Extract(104,dir/L"README.txt");
+        Extract(105,dir/L"build-info.json");
+        Extract(106,dir/L"LICENSES"/L"SMAA-LICENSE.txt");
+        Extract(107,dir/L"LICENSES"/L"SMAA-README.md");
+    }
+};
+#endif
 std::wstring Environment(const wchar_t* name){
     DWORD size=GetEnvironmentVariableW(name,nullptr,0);if(!size)return {};
     std::wstring value(size,L'\0');GetEnvironmentVariableW(name,value.data(),size);value.resize(size-1);return value;
@@ -88,15 +147,23 @@ fs::path ChooseInstalledGame(){
     dialog.lpstrTitle=L"Choose your EXISTING Tekken Tag Tournament 2 game executable";
     dialog.lpstrFilter=L"Installed game executable (*.exe)\0*.exe\0";dialog.lpstrFile=path;dialog.nMaxFile=32768;
     dialog.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
-    if(!GetOpenFileNameW(&dialog))return {};return fs::path(path).parent_path();
+    if(!GetOpenFileNameW(&dialog))return {};return fs::path(path);
 }
 void DefaultIni(const fs::path& path,const wchar_t* section,const wchar_t* key,const wchar_t* value){
     wchar_t current[128]{};GetPrivateProfileStringW(section,key,L"",current,128,path.c_str());
     if(!*current)Require(WritePrivateProfileStringW(section,key,value,path.c_str()),"Cannot write preview settings.");
 }
+void ReplaceCopy(const fs::path& source,const fs::path& target){
+    // Replace a directory entry rather than truncating an existing file. A
+    // leftover hard link must never turn a preview update into an original edit.
+    fs::path temporary=target.wstring()+L".ttt2-incoming-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64());
+    Require(CopyFileW(source.c_str(),temporary.c_str(),TRUE)!=0,"Cannot stage a preview update file.");
+    struct RemoveTemporary{fs::path path;~RemoveTemporary(){std::error_code ignored;fs::remove(path,ignored);}}cleanup{temporary};
+    Require(MoveFileExW(temporary.c_str(),target.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)!=0,"Cannot replace a preview file. Close the game and launcher, then run the updater again.");
+}
 void Prepare(const fs::path& package,const fs::path& install,const fs::path& state,const fs::path& sourceSettings,const fs::path& sourceSaves){
     Require(!GameRunning(),"Close all running copies of the game and launcher before preparing the preview.");
-    Payload(package);Require(fs::is_regular_file(install/L"game"/L"tekken.img"),"Choose the original installation containing game/tekken.img.");
+    const auto payload=Payload(package);Require(fs::is_regular_file(install/L"game"/L"tekken.img"),"Choose the original installation containing game/tekken.img.");
     Require(Hash(install/L"game"/L"tekken.img",BCRYPT_SHA1_ALGORITHM)==kImageSha1,"This preview requires the USA/Europe Title Update 3 installation. The game image does not match.");
     PlainDirectory(state);
     if(fs::exists(state)&&!fs::is_empty(state))Require(fs::is_regular_file(state/kMarker),"The preview destination contains unrelated files. Choose an empty folder.");
@@ -120,40 +187,89 @@ void Prepare(const fs::path& package,const fs::path& install,const fs::path& sta
     }
     DefaultIni(settings,L"Keyboard",L"SeparatePlayer",L"1");DefaultIni(settings,L"Mods",L"Overlay",L"1");
     DefaultIni(settings,L"Mods",L"InfiniteHealth",L"0");DefaultIni(settings,L"Mods",L"InfiniteMoney",L"0");DefaultIni(settings,L"Mods",L"UnlockContent",L"0");
-    fs::copy_file(package/L"bin"/L"game.exe",app/L"tekken_recomp.exe",fs::copy_options::overwrite_existing);
-    fs::copy_file(package/L"bin"/L"launcher.exe",app/L"TTT2 Launcher.exe",fs::copy_options::overwrite_existing);
+    ReplaceCopy(package/L"bin"/L"game.exe",app/L"tekken_recomp.exe");
+    ReplaceCopy(package/L"bin"/L"launcher.exe",app/L"TTT2 Launcher.exe");
+    Require(Hash(app/L"tekken_recomp.exe",BCRYPT_SHA256_ALGORITHM)==payload.at(L"game.exe") &&
+            Hash(app/L"TTT2 Launcher.exe",BCRYPT_SHA256_ALGORITHM)==payload.at(L"launcher.exe"),"Installed preview checksum mismatch. Close the game and run the updater again.");
+    // Standalone and ZIP updates retain the same provenance and notices locally.
+    PlainDirectory(app/L"LICENSES");fs::create_directories(app/L"LICENSES");
+    for(const wchar_t* name:{L"README.txt",L"build-info.json",L"LICENSES/SMAA-LICENSE.txt",L"LICENSES/SMAA-README.md"}) {
+        const auto target=app/name;
+        const DWORD attrs=GetFileAttributesW(target.c_str());
+        Require(attrs==INVALID_FILE_ATTRIBUTES||!(attrs&FILE_ATTRIBUTE_REPARSE_POINT),"Preview documentation must not contain linked files.");
+        ReplaceCopy(package/name,target);
+    }
     // Only the small local boot image is copied. All assets remain in the user's
     // installation and are read through TTT2_VFS_ROOT. No link/admin rights needed.
-    fs::copy_file(install/L"game"/L"tekken.img",app/L"game"/L"tekken.img",fs::copy_options::overwrite_existing);
+    ReplaceCopy(install/L"game"/L"tekken.img",app/L"game"/L"tekken.img");
     for(const wchar_t* name:{L"msvcp140.dll",L"msvcp140_atomic_wait.dll",L"vcruntime140.dll",L"vcruntime140_1.dll"}){
-        if(fs::is_regular_file(install/name))fs::copy_file(install/name,app/name,fs::copy_options::overwrite_existing);
+        if(fs::is_regular_file(install/name))ReplaceCopy(install/name,app/name);
     }
     Require(WritePrivateProfileStringW(L"Launcher",L"GameExecutable",(app/L"tekken_recomp.exe").c_str(),(state/L"launcher.ini").c_str()),"Cannot save the preview game location.");
     Require(WritePrivateProfileStringW(L"Preview",L"InstalledGame",install.c_str(),(state/L"preview.ini").c_str()),"Cannot save the installed game location.");
 }
 }
 int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
-    bool prepareOnly=false;
+    bool prepareOnly=false,launchOriginal=false;
     try{
-        const fs::path package=Self().parent_path();const auto local=Environment(L"LOCALAPPDATA");Require(!local.empty(),"LOCALAPPDATA is unavailable.");
-        fs::path install,state=fs::path(local)/L"TTT2RecompCommunityPreview"/L"v0.1.7-community.1";
+        fs::path package=Self().parent_path();
+#ifdef TTT2_EMBEDDED_PREVIEW
+        EmbeddedPackage embedded;
+#endif
+        const auto local=Environment(L"LOCALAPPDATA");Require(!local.empty(),"LOCALAPPDATA is unavailable.");
+        fs::path install,originalExe,state=fs::path(local)/L"TTT2RecompCommunityPreview"/L"v0.1.7-community.1";
         fs::path sourceSettings=fs::path(local)/L"TTT2Recomp"/L"settings.ini",sourceSaves=fs::path(local)/L"TTT2Recomp"/L"saves";
         int count{};LPWSTR* argv=CommandLineToArgvW(GetCommandLineW(),&count);Require(argv!=nullptr,"Cannot read command line.");
         for(int i=1;i<count;++i){std::wstring arg=argv[i];
             if(arg==L"--prepare-only")prepareOnly=true;
+            else if(arg==L"--launch-original")launchOriginal=true;
             else {Require(i+1<count,"Missing command-line value.");const fs::path value=argv[++i];
                 if(arg==L"--install-dir")install=value;else if(arg==L"--state-dir")state=value;
+                else if(arg==L"--original-exe")originalExe=value;
                 else if(arg==L"--source-settings")sourceSettings=value;else if(arg==L"--source-saves")sourceSaves=value;
                 else throw std::runtime_error("Unknown command-line option.");}
         }LocalFree(argv);
         state=fs::absolute(state).lexically_normal();
         if(install.empty()){
             wchar_t saved[32768]{};GetPrivateProfileStringW(L"Preview",L"InstalledGame",L"",saved,32768,(state/L"preview.ini").c_str());
-            if(*saved)install=saved;else install=ChooseInstalledGame();
+            if(*saved)install=saved;else { originalExe=ChooseInstalledGame();if(!originalExe.empty())install=originalExe.parent_path(); }
             if(install.empty())return 0;
         }
         install=fs::canonical(install);
+        if(originalExe.empty()) {
+            wchar_t saved[32768]{};GetPrivateProfileStringW(L"Preview",L"OriginalExecutable",L"",saved,32768,(state/L"preview.ini").c_str());
+            if(*saved)originalExe=saved;
+            else if(fs::is_regular_file(install/L"Tekken Tag Tournament 2.exe"))originalExe=install/L"Tekken Tag Tournament 2.exe";
+            else if(fs::is_regular_file(install/L"tekken_recomp.exe"))originalExe=install/L"tekken_recomp.exe";
+        }
+        Require(!(prepareOnly&&launchOriginal),"Choose either preparation or original game launch.");
+        if(!prepareOnly) {
+            const int choice=launchOriginal?IDNO:MessageBoxW(nullptr,
+                L"Choose how to play:\n\nYes: Updated offline launcher and cheats\nNo: Original game for online play\n\nThe original game and its saves remain separate.",
+                L"TTT2 - Choose game",MB_YESNOCANCEL|MB_ICONQUESTION|MB_DEFBUTTON1);
+            if(choice==IDCANCEL||choice==0)return 0;
+            if(choice==IDNO) {
+                if((originalExe.empty()||!fs::is_regular_file(originalExe))&&!launchOriginal)originalExe=ChooseInstalledGame();
+                Require(!originalExe.empty()&&fs::is_regular_file(originalExe),"The original game executable was not found. Select it again from your game installation.");
+                originalExe=fs::canonical(originalExe);
+                Require(originalExe.parent_path()==install,"The original game executable must be in the selected installation folder.");
+                for(const wchar_t* name:{L"TTT2_SETTINGS_INI",L"TTT2_SAVE_ROOT",L"TTT2_VFS_ROOT",L"TTT2_NET",L"TTT2_INPUT_SCRIPT",L"TTT2_AUTOSTART"}) SetEnvironmentVariableW(name,nullptr);
+                std::wstring command=L"\""+originalExe.wstring()+L"\"";
+                STARTUPINFOW startup{sizeof(startup)};PROCESS_INFORMATION process{};
+                Require(CreateProcessW(originalExe.c_str(),command.data(),nullptr,nullptr,FALSE,0,nullptr,install.c_str(),&startup,&process),"Cannot start the original game.");
+                CloseHandle(process.hThread);CloseHandle(process.hProcess);return 0;
+            }
+        }
+        UpdateLock updateLock;
+#ifdef TTT2_EMBEDDED_PREVIEW
+        embedded.Prepare();package=embedded.dir;
+#endif
         Prepare(package,install,state,sourceSettings,sourceSaves);
+        if(!originalExe.empty() && fs::is_regular_file(originalExe)) {
+            originalExe=fs::canonical(originalExe);
+            Require(originalExe.parent_path()==install,"The original game executable must be in the selected installation folder.");
+            Require(WritePrivateProfileStringW(L"Preview",L"OriginalExecutable",originalExe.c_str(),(state/L"preview.ini").c_str()),"Cannot save the original game location.");
+        }
         if(prepareOnly)return 0;
         Require(SetEnvironmentVariableW(L"TTT2_SETTINGS_INI",(state/L"settings.ini").c_str())&&
                 SetEnvironmentVariableW(L"TTT2_SAVE_ROOT",(state/L"saves").c_str())&&

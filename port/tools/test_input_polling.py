@@ -26,6 +26,7 @@ CHECKER = r'''
 #include <cstring>
 #include <mutex>
 #include <thread>
+#include <string>
 std::array<bool,256> keys{};
 bool physical[4]{};
 XINPUT_STATE host[4]{};
@@ -142,7 +143,7 @@ int main() {
     CHECK(g_pads[0].connected && !g_pads[1].connected && g_pads[0].state.Gamepad.wButtons==0x1000);
     // Even identical held buttons need a new packet at a source handoff.
     packet=g_pads[0].state.dwPacketNumber;physical[0]=true;host[0].Gamepad.wButtons=0x1000;
-    poll.disconnectedBackoff[0]=0;PollPadsOnce(poll,false,24);
+    poll.retryAtMs[0]=0;PollPadsOnce(poll,false,24);
     CHECK(g_pads[0].physical && g_pads[0].state.dwPacketNumber==packet+1);
     physical[0]=false;PollPadsOnce(poll,false,32);
     CHECK(!g_pads[0].physical && g_pads[0].state.dwPacketNumber==packet+2);
@@ -188,7 +189,7 @@ int main() {
     // A claimed pad keeps its user across a disconnect; nobody else takes it meanwhile.
     physical[1]=false;PollPadsOnce(poll,false,40);
     CHECK(g_pads[0].connected && !g_pads[0].physical && g_pads[1].physical); // keyboard keeps player 1
-    physical[1]=true;poll.disconnectedBackoff[1]=0;host[1].Gamepad.wButtons=0x4000;
+    physical[1]=true;poll.retryAtMs[1]=0;host[1].Gamepad.wButtons=0x4000;
     PollPadsOnce(poll,false,48);
     CHECK(g_pads[0].physical && g_pads[0].state.Gamepad.wButtons==0x4000);
     // Stick drift does not claim a user; a trigger press does.
@@ -212,7 +213,7 @@ int main() {
     CHECK(g_pads[1].connected && g_pads[1].state.Gamepad.wButtons==0 && g_pads[0].state.Gamepad.wButtons==0);
     PollPadsOnce(poll,false,310,&script);
     CHECK(g_pads[1].state.Gamepad.wButtons==0x4002 && g_pads[0].state.Gamepad.wButtons==0);
-    physical[1]=true;poll.disconnectedBackoff[1]=0;host[1].Gamepad.wButtons=0x0100;PollPadsOnce(poll,false,320,&script);
+    physical[1]=true;poll.retryAtMs[1]=0;host[1].Gamepad.wButtons=0x0100;PollPadsOnce(poll,false,320,&script);
     CHECK(g_pads[0].physical && g_pads[0].state.Gamepad.wButtons==0x0100); // a used real pad is still player 1
     CHECK(g_pads[1].connected && g_pads[1].state.Gamepad.wButtons==0x4002);
 
@@ -276,7 +277,8 @@ def main():
     keys = (kernel / "keyboard_keys.cpp").read_text(encoding="utf-8-sig")
     with tempfile.TemporaryDirectory(prefix="ttt2-input-") as temp:
         folder = Path(temp)
-        source = CHECKER.replace("@KEYS@", keys).replace("@PRODUCTION@", text[begin:end])
+        mocks = 'std::atomic<uint32_t> g_usedUsers{0};\nbool User0SignedIn(){return true;}\nstd::string UserName(unsigned){return "test";}\nvoid XamNotifyEnqueueEvent(unsigned,unsigned){}\n'
+        source = '#include "direction_filter.h"\n' + CHECKER.replace("@KEYS@", mocks+keys).replace("@PRODUCTION@", text[begin:end])
         exe = compile_one(folder, "input", source, [kernel])
         env = dict(os.environ, TTT2_SETTINGS_INI=str(folder / "settings.ini"))
         subprocess.run([str(exe)], check=True, timeout=10, env=env)

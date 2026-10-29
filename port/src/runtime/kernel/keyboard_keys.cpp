@@ -81,6 +81,15 @@ bool SeparatePlayer()
     return separate;
 }
 
+int PlayerOnePreference()
+{
+    static const int preference = [] {
+        const unsigned value = GetPrivateProfileIntA("Input", "PlayerOnePreference", 0, IniPath().c_str());
+        return value <= 2 ? int(value) : 0;
+    }();
+    return preference;
+}
+
 int SOCD()
 {
     static const int mode = [] {
@@ -100,6 +109,15 @@ int StickDeadzone()
     static const int percent = [] {
         const unsigned value = GetPrivateProfileIntA("Input", "StickDeadzone", 0, IniPath().c_str());
         return value <= 95 ? int(value) : 0;
+    }();
+    return percent;
+}
+
+int StickDiagonal()
+{
+    static const int percent = [] {
+        const unsigned value = GetPrivateProfileIntA("Input", "StickDiagonal", 0, IniPath().c_str());
+        return value <= 100 ? int(value) : 0;
     }();
     return percent;
 }

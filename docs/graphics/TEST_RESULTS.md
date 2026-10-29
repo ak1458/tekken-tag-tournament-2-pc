@@ -90,3 +90,32 @@ source settings/saves and installed game image hashes remain unchanged. No launc
 or game is opened by this automated test. The ZIP is generated from an explicit
 8-entry allowlist and verified for CRC/inventory; no game assets or personal files
 are included. Evidence: .development/updater-smoke.log and preview-updater-build.log.
+
+## Final local build and updater - 2026-10-29
+
+Implementation was completed for diagonal tuning, in-game SDR references, and a
+scoped one-shot customization grant before final builds/tests began. Analog-only,
+full content coverage and matrix renderer dependencies remain unresolved; this is
+an experimental partial update, not completion of the entire master checklist.
+
+- Release game, native launcher, plain updater and embedded standalone updater built.
+- 15 focused regression scripts passed, plus the new 657-check permanent-grant
+  fixture. Direction filter: 196768 checks; SDR GPU readback: 1572864; physical
+  polling harness: 503; overlay: 40; health: 238 plus negative control; save store:
+  302 create + 48 new-process reopen checks and both negative controls passed.
+- Permanent-grant fixture uses locally extracted original TU3 bulk, query,
+  serializer and loader routines. Backup/preview/menu/session/schema/save-busy
+  guards pass; the live guest save scheduler is mocked. Actual save/restart and
+  complete category coverage are not established by this fixture.
+- ZIP updater and embedded standalone updater passed TU3 preparation, payload
+  hashes, progress-preserving reruns and original-file preservation. Standalone
+  hash equality confirms the embedded game/launcher match the latest local builds;
+  original-launch separation uses a mock executable, not a Steam match.
+- A simultaneous test run was rejected by the new updater mutex; sequential
+  rerun passed. Accidental hard-link replacement preserves its original target.
+- Snapshot verification confirms 54 original executables/DLLs/boot image/settings/
+  save files unchanged. No game was launched or screen controlled.
+- Logs and machine-readable results: .development/finish-2026-10-29/.
+
+The latest game still needs the user's real fight/controller/display/restart
+acceptance. No upstream merge, PR update or GitHub release was performed.

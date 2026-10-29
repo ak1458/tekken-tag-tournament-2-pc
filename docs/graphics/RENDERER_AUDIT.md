@@ -64,3 +64,18 @@ Current evidence: .development/cheats-graphics-build.log, advanced-launcher-buil
 sdr-tests.log, mip-tests.log, graphics-settings-tests.log and title-regression.log.
 The expanded build passes. Runtime fight captures, multi-GPU/monitor acceptance,
 exclusive-refresh fallback, preset balancing and live Steam regressions are pending.
+
+## Source continuation — 2026-10-29 (no builds or tests run)
+
+Added transient SDR reference panels in the display pixel-shader variants, after
+guest gamma and before the existing SDR transform. The reference follows the same
+AA/scaling/sharpening presentation path as the game. It leaves the middle image
+visible for an owned system dialog with live brightness/gamma/contrast actions.
+The tools overlay permits calibration only in the main/options menu, rechecks the
+session gate in callbacks, and clears the reference on exit or a 60-second timeout.
+It starts disabled and is not serialized. The prior launcher-only reference remains.
+
+The production shader readback, overlay transition and configuration fixtures have
+been extended, but have not been executed. No new build, runtime, screenshot or
+release evidence exists for this continuation. Earlier build evidence does not
+validate these changes.

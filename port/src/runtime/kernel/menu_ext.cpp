@@ -24,6 +24,7 @@
 #include "profiles.h"
 #include "keyboard_keys.h"
 #include "cheat_overlay.h"
+#include "persistent_unlocks.h"
 void DisplayChangeGuardFrame();
 #include "menu_host.h"
 #include "server_ui.h"
@@ -1265,6 +1266,7 @@ void UiFrame(PPCContext& ctx, uint8_t* base)
         std::fprintf(stderr,"[display] applied motion blur %d through guest option setter\n",display_settings::GetMotionBlur());
     }
     cheat_overlay::Frame(inputFrame);
+    persistent_unlocks::ProcessPending(ctx,base,inputFrame=="FrameMainMenu" || inputFrame.rfind("FrameMode007-",0)==0);
     HostSetSharedMenuInput(inputFrame == "FrameMainMenu" ||
         inputFrame.rfind("FrameMode007-", 0) == 0 ||
         inputFrame == "FrameOnlineMenu" || inputFrame == "FrameOnlineServerList");

@@ -868,6 +868,7 @@ void PollPadsOnce(PadPollState& polling, bool autoStart, uint64_t elapsedMs, Pad
                 auto& pad = sampled[i].Gamepad;
                 pad.sThumbLX = input_direction::Stick(pad.sThumbLX, keyboard_keys::DPadOnly(), keyboard_keys::StickDeadzone());
                 pad.sThumbLY = input_direction::Stick(pad.sThumbLY, keyboard_keys::DPadOnly(), keyboard_keys::StickDeadzone());
+                input_direction::TuneDiagonal(pad.sThumbLX, pad.sThumbLY, keyboard_keys::StickDiagonal());
                 if (!polling.physicalConnected[i] || elapsedMs >= polling.capsAtMs[i])
                 {
                     XInputGetCapabilities(i, 0, &polling.caps[i]);
@@ -896,6 +897,7 @@ void PollPadsOnce(PadPollState& polling, bool autoStart, uint64_t elapsedMs, Pad
     const uint16_t keyboardEdge = keyboard.buttons & ~polling.previousKeyboard;
     polling.previousKeyboard = keyboard.buttons;
     if (dynamic && polling.keyboardGuest < 0 && keyboardEdge &&
+        (claimed(0) || keyboard_keys::PlayerOnePreference() != 2) &&
         (keyboardEdge & 0x0010))
         for (int user = 0; user < 4; ++user)
             if (!claimed(user)) { polling.keyboardGuest = user; break; }
@@ -907,7 +909,7 @@ void PollPadsOnce(PadPollState& polling, bool autoStart, uint64_t elapsedMs, Pad
         const bool used = g.wButtons || g.bLeftTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD ||
                           g.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD;
         if (!polling.physicalConnected[i] || polling.guestOf[i] >= 0 || !used) continue;
-        if (dynamic && !(edge & 0x0010)) continue;
+        if (dynamic && (!(edge & 0x0010) || (!claimed(0) && keyboard_keys::PlayerOnePreference() == 1))) continue;
         for (int user = 0; user < 4; ++user)
             if (!claimed(user)) { polling.guestOf[i] = user; break; }
     }

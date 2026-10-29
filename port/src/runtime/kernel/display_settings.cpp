@@ -43,6 +43,7 @@ std::atomic<int> g_refreshRate{0};
 std::atomic<int> g_mipBias{0},g_renderScale{0},g_performanceStats{0};
 std::atomic<int> g_brightness{100},g_gamma{100},g_contrast{100},g_gpuAdapter{-1};
 std::atomic<bool> g_loadedFlag{ false };
+std::atomic<bool> g_calibrationPattern{false};
 std::atomic<uint32_t> g_generation{ 0 };
 
 std::string IniPath()
@@ -238,6 +239,8 @@ int GetPerformanceStats(){return GetAtomic(g_performanceStats);}
 void SetTextureMipBias(int v){SetAtomic(g_mipBias,v,0,3,"texture mip bias");}
 void SetRenderScale(int v){const int previous=GetRenderScale();SetAtomic(g_renderScale,v==0?0:std::clamp(v,50,200),0,200,"render scale");if(previous!=GetRenderScale())g_generation.fetch_add(1);}
 void SetPerformanceStats(int v){SetAtomic(g_performanceStats,v,0,2,"performance statistics");}
+bool GetCalibrationPattern(){return g_calibrationPattern.load();}
+void SetCalibrationPattern(bool enabled){g_calibrationPattern.store(enabled);}
 int GetBrightness(){return GetAtomic(g_brightness);}
 int GetGamma(){return GetAtomic(g_gamma);}
 int GetContrast(){return GetAtomic(g_contrast);}
