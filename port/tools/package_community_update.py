@@ -81,7 +81,7 @@ def stage(output,game,launcher,bootstrap):
     (output/'payload.sha256').write_text(''.join(digest(output/'bin'/name)+'  '+name+'\n' for name in ('game.exe','launcher.exe','SDL3.dll')))
     (output/'README.txt').write_text(README,encoding='utf-8')
     revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
-    (output/'build-info.json').write_text(json.dumps({'version':'v0.1.7-community.1','build_label':'2026-10-29-r2','base':'upstream-main-007c523','source_revision':revision,
+    (output/'build-info.json').write_text(json.dumps({'version':'v0.1.7-community.2','build_label':'2026-10-29-r3','base':'upstream-main-007c523','source_revision':revision,
         **source_identity(),'payload_sha256':{'game.exe':digest(game),'launcher.exe':digest(launcher),'SDL3.dll':digest(game.parent/'SDL3.dll')},
         'platform':'windows-x64','steam_enabled':False,'experimental':True,'game_assets_included':False},indent=2)+'\n')
     return list(mapping)+['payload.sha256','README.txt','build-info.json']
