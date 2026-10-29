@@ -119,3 +119,24 @@ an experimental partial update, not completion of the entire master checklist.
 
 The latest game still needs the user's real fight/controller/display/restart
 acceptance. No upstream merge, PR update or GitHub release was performed.
+
+## Upstream-integrated candidate - 2026-10-29
+
+Upstream main 007c523 is merged with conflicts resolved, retaining its SDL and
+shared settings paths. Full Windows Release game, launcher and updater builds
+passed. The integrated candidate includes the host flush-success mapping fix.
+The updated save fixture passed 302 create + 48 fresh-process reopen checks,
+including a native write oracle and both negative controls. Fourteen other
+focused suites passed, including SDL virtual A/Start events, dynamic ownership,
+SDR GPU readbacks, health guards and overlay transitions. The separate 657-check
+permanent-grant fixture also passed; its live save scheduler remains mocked.
+
+Standalone and ZIP updater tests passed with the new SDL3.dll payload/licence:
+embedded game/launcher hashes match current builds; repeated updates preserve
+preview progress; original launch is checked with a mock executable. The
+54-file original-install/settings/save baseline still matches. No game session
+or screen control was used. Linux/Android runtime, physical controllers, live
+save/restart, Steam, analog-only and dependency-blocked graphics remain open.
+
+Earlier evidence records describe earlier binaries. This candidate integrates
+current upstream and must still receive physical gameplay acceptance.
