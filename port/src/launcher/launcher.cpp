@@ -16,6 +16,7 @@
 #include <dwmapi.h>
 #include <dxgi1_6.h>
 #include <wrl/client.h>
+#include "preview_environment.h"
 #include "../runtime/kernel/display_settings.h"
 #include "../runtime/kernel/display_devices.h"
 #include "../runtime/kernel/graphics_registry.h"
@@ -436,6 +437,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }
 }
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
+    try {
+        wchar_t self[32768]{};
+        const DWORD size=GetModuleFileNameW(nullptr,self,32768);
+        if(!size || size>=32768)throw std::runtime_error("Cannot locate the launcher.");
+        preview_environment::Configure(self);
+    } catch(const std::exception& error) {
+        MessageBoxA(nullptr,error.what(),"TTT2 Offline Launcher",MB_OK|MB_ICONERROR);return 1;
+    }
     INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_TAB_CLASSES}; InitCommonControlsEx(&controls);
     Gdiplus::GdiplusStartupInput graphicsStartup;Gdiplus::GdiplusStartup(&graphicsToken,&graphicsStartup,nullptr);
     SetProcessDPIAware();

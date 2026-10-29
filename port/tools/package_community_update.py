@@ -9,14 +9,15 @@ This is an unofficial experimental preview integrating upstream main 007c523.
 It is NOT an in-place replacement for the official installed game.
 Steam online is not compiled into this preview. Keep the original for online play.
 
-1. Close the game and launcher. Extract this entire ZIP into an ordinary folder.
-2. Open "TTT2 Offline Update.exe".
+1. Close the game and launcher. Download the standalone EXE, or extract the whole ZIP.
+2. Open "TTT2 Offline Update.exe" (the standalone download may include a date).
 3. Select your EXISTING "Tekken Tag Tournament 2.exe" when asked.
-4. Choose updated offline play or the original game for online play. The offline
-   update checks the USA/Europe TU3 image, checks payload hashes, copies your
-   existing settings and saves into a separate preview folder, then opens the launcher.
+4. The updater checks the USA/Europe TU3 image and payload hashes, copies your
+   settings/saves into a separate preview, and creates TTT2 Offline Launcher on
+   your Windows desktop before opening the installed launcher.
 5. Use the launcher to select input, graphics and offline cheats, then Play Game.
-   Reopen "TTT2 Offline Update.exe" for subsequent preview sessions.
+   Next time, open the desktop's "TTT2 Offline Launcher" shortcut directly.
+   You only need to download/run the updater again when installing a newer update.
 
 The original installation, executable, settings and saves are never overwritten.
 The preview reads your existing assets; keep that original game folder installed.
@@ -26,8 +27,8 @@ are included in this download. A small boot image and VC runtime DLLs are copied
 locally from your existing installation; game assets are reused in place.
 
 Preview state: %LOCALAPPDATA%/TTT2RecompCommunityPreview/v0.1.7-community.1
-Returning to the original: close the preview and choose the original game in the
-updater, or use your normal game shortcut. The original keeps its own saves.
+Returning to the original: close the preview and use your normal game shortcut.
+The original shortcut and its saves stay unchanged.
 
 Included: native launcher with original generated arena art; first-Start player
 ownership and Player 1 preference; separate keyboard/controller joining;
@@ -81,7 +82,7 @@ def stage(output,game,launcher,bootstrap):
     (output/'payload.sha256').write_text(''.join(digest(output/'bin'/name)+'  '+name+'\n' for name in ('game.exe','launcher.exe','SDL3.dll')))
     (output/'README.txt').write_text(README,encoding='utf-8')
     revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
-    (output/'build-info.json').write_text(json.dumps({'version':'v0.1.7-community.2','build_label':'2026-10-29-r3','base':'upstream-main-007c523','source_revision':revision,
+    (output/'build-info.json').write_text(json.dumps({'version':'v0.1.7-community.3','build_label':'2026-10-29-r4','base':'upstream-main-007c523','source_revision':revision,
         **source_identity(),'payload_sha256':{'game.exe':digest(game),'launcher.exe':digest(launcher),'SDL3.dll':digest(game.parent/'SDL3.dll')},
         'platform':'windows-x64','steam_enabled':False,'experimental':True,'game_assets_included':False},indent=2)+'\n')
     return list(mapping)+['payload.sha256','README.txt','build-info.json']

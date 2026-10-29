@@ -140,3 +140,18 @@ save/restart, Steam, analog-only and dependency-blocked graphics remain open.
 
 Earlier evidence records describe earlier binaries. This candidate integrates
 current upstream and must still receive physical gameplay acceptance.
+
+## Install once, launch from desktop - 2026-10-29
+
+The updater now installs the preview and writes a per-user TTT2 Offline Launcher
+shortcut. That link targets the installed native launcher directly with its app
+folder as the working directory. Launcher startup recognizes the preview marker
+and restores its own settings/save/assets environment before reading settings.
+The original game shortcut is unchanged. The updater is only needed for future
+updates; the original game-data folder remains required.
+
+The plain-package regression installs into temporary state/desktop directories,
+reads the real Shell Link COM properties, verifies the production startup helper
+with inherited wrong environment values, checks rerun progress/shortcut retention,
+and rejects missing original assets without falling back to original settings.
+No game or graphical launcher is opened by the fixture; no real desktop is edited.

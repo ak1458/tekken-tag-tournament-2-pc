@@ -7,6 +7,8 @@
 #include <windows.h>
 #include <commdlg.h>
 #include <shellapi.h>
+#include <shlobj.h>
+#include <wrl/client.h>
 #include <bcrypt.h>
 #include <tlhelp32.h>
 #include <filesystem>
@@ -165,6 +167,35 @@ void ReplaceCopy(const fs::path& source,const fs::path& target){
     struct RemoveTemporary{fs::path path;~RemoveTemporary(){std::error_code ignored;fs::remove(path,ignored);}}cleanup{temporary};
     Require(MoveFileExW(temporary.c_str(),target.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)!=0,"Cannot replace a preview file. Close the game and launcher, then run the updater again.");
 }
+void DesktopShortcut(const fs::path& state,fs::path desktop) {
+    const HRESULT initialized=CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
+    Require(SUCCEEDED(initialized)||initialized==RPC_E_CHANGED_MODE,"Update installed, but Windows shortcut setup is unavailable.");
+    struct Uninitialize{bool owns;~Uninitialize(){if(owns)CoUninitialize();}}com{SUCCEEDED(initialized)};
+    if(desktop.empty()) {
+        PWSTR known=nullptr;
+        Require(SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Desktop,KF_FLAG_DEFAULT,nullptr,&known)),"Update installed, but the desktop folder was not found.");
+        desktop=known;CoTaskMemFree(known);
+    }
+    desktop=fs::absolute(desktop).lexically_normal();
+    // The Windows known folder can be redirected to OneDrive or another
+    // user-selected location. Only our named shortcut is written there.
+    fs::create_directories(desktop);
+    Microsoft::WRL::ComPtr<IShellLinkW> link;
+    Require(SUCCEEDED(CoCreateInstance(CLSID_ShellLink,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&link))),"Update installed, but Windows could not create its desktop shortcut.");
+    const auto app=state/L"app";
+    Require(SUCCEEDED(link->SetPath((app/L"TTT2 Launcher.exe").c_str())) &&
+            SUCCEEDED(link->SetWorkingDirectory(app.c_str())) &&
+            SUCCEEDED(link->SetDescription(L"Open the installed TTT2 offline launcher")) &&
+            SUCCEEDED(link->SetIconLocation((app/L"tekken_recomp.exe").c_str(),0)),"Cannot configure the offline launcher shortcut.");
+    Microsoft::WRL::ComPtr<IPersistFile> file;
+    Require(SUCCEEDED(link.As(&file)),"Cannot save the offline launcher shortcut.");
+    const auto destination=desktop/L"TTT2 Offline Launcher.lnk";
+    const auto temporary=desktop/(L"TTT2 Offline Launcher.incoming-"+std::to_wstring(GetCurrentProcessId())+L".lnk");
+    Require(!fs::exists(temporary),"An interrupted shortcut update exists. Keep it and try again after closing other updaters.");
+    Require(SUCCEEDED(file->Save(temporary.c_str(),TRUE)),"Update installed, but its desktop shortcut could not be saved.");
+    struct Cleanup{fs::path path;~Cleanup(){std::error_code ignored;fs::remove(path,ignored);}}cleanup{temporary};
+    Require(MoveFileExW(temporary.c_str(),destination.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)!=0,"Update installed, but its desktop shortcut could not be replaced.");
+}
 void Prepare(const fs::path& package,const fs::path& install,const fs::path& state,const fs::path& sourceSettings,const fs::path& sourceSaves){
     Require(!GameRunning(),"Close all running copies of the game and launcher before preparing the preview.");
     const auto payload=Payload(package);Require(fs::is_regular_file(install/L"game"/L"tekken.img"),"Choose the original installation containing game/tekken.img.");
@@ -223,7 +254,7 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
         EmbeddedPackage embedded;
 #endif
         const auto local=Environment(L"LOCALAPPDATA");Require(!local.empty(),"LOCALAPPDATA is unavailable.");
-        fs::path install,originalExe,state=fs::path(local)/L"TTT2RecompCommunityPreview"/L"v0.1.7-community.1";
+        fs::path install,originalExe,shortcutDir,state=fs::path(local)/L"TTT2RecompCommunityPreview"/L"v0.1.7-community.1";
         fs::path sourceSettings=fs::path(local)/L"TTT2Recomp"/L"settings.ini",sourceSaves=fs::path(local)/L"TTT2Recomp"/L"saves";
         int count{};LPWSTR* argv=CommandLineToArgvW(GetCommandLineW(),&count);Require(argv!=nullptr,"Cannot read command line.");
         for(int i=1;i<count;++i){std::wstring arg=argv[i];
@@ -232,6 +263,7 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
             else {Require(i+1<count,"Missing command-line value.");const fs::path value=argv[++i];
                 if(arg==L"--install-dir")install=value;else if(arg==L"--state-dir")state=value;
                 else if(arg==L"--original-exe")originalExe=value;
+                else if(arg==L"--shortcut-dir")shortcutDir=value;
                 else if(arg==L"--source-settings")sourceSettings=value;else if(arg==L"--source-saves")sourceSaves=value;
                 else throw std::runtime_error("Unknown command-line option.");}
         }LocalFree(argv);
@@ -249,12 +281,7 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
             else if(fs::is_regular_file(install/L"tekken_recomp.exe"))originalExe=install/L"tekken_recomp.exe";
         }
         Require(!(prepareOnly&&launchOriginal),"Choose either preparation or original game launch.");
-        if(!prepareOnly) {
-            const int choice=launchOriginal?IDNO:MessageBoxW(nullptr,
-                L"Choose how to play:\n\nYes: Updated offline launcher and cheats\nNo: Original game for online play\n\nThe original game and its saves remain separate.",
-                L"TTT2 - Choose game",MB_YESNOCANCEL|MB_ICONQUESTION|MB_DEFBUTTON1);
-            if(choice==IDCANCEL||choice==0)return 0;
-            if(choice==IDNO) {
+        if(launchOriginal) {
                 if((originalExe.empty()||!fs::is_regular_file(originalExe))&&!launchOriginal)originalExe=ChooseInstalledGame();
                 Require(!originalExe.empty()&&fs::is_regular_file(originalExe),"The original game executable was not found. Select it again from your game installation.");
                 originalExe=fs::canonical(originalExe);
@@ -264,7 +291,6 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
                 STARTUPINFOW startup{sizeof(startup)};PROCESS_INFORMATION process{};
                 Require(CreateProcessW(originalExe.c_str(),command.data(),nullptr,nullptr,FALSE,0,nullptr,install.c_str(),&startup,&process),"Cannot start the original game.");
                 CloseHandle(process.hThread);CloseHandle(process.hProcess);return 0;
-            }
         }
         UpdateLock updateLock;
 #ifdef TTT2_EMBEDDED_PREVIEW
@@ -276,6 +302,7 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
             Require(originalExe.parent_path()==install,"The original game executable must be in the selected installation folder.");
             Require(WritePrivateProfileStringW(L"Preview",L"OriginalExecutable",originalExe.c_str(),(state/L"preview.ini").c_str()),"Cannot save the original game location.");
         }
+        if(!prepareOnly || !shortcutDir.empty())DesktopShortcut(state,shortcutDir);
         if(prepareOnly)return 0;
         Require(SetEnvironmentVariableW(L"TTT2_SETTINGS_INI",(state/L"settings.ini").c_str())&&
                 SetEnvironmentVariableW(L"TTT2_SAVE_ROOT",(state/L"saves").c_str())&&

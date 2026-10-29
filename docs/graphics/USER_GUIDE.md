@@ -108,7 +108,11 @@ vendor reconstruction/frame generation and unmapped guest effects have no fake t
 Extract the entire community preview ZIP and open **TTT2 Offline Update.exe**.
 Select the executable from your existing installed game when asked. It checks TU3
 compatibility and creates an isolated preview with copied settings/saves. The original
-installed game remains available for its existing online features. Reopen the update
-bootstrap for later preview sessions; keep the original game-data folder installed.
+installed game remains available for its existing online features. Installation
+creates **TTT2 Offline Launcher** on the Windows desktop. Use that shortcut for
+later sessions: it opens the installed launcher directly, without selecting the
+game location or running the updater again. Download/run the updater only for a
+newer update. Keep the original game-data folder installed. The original game's
+desktop shortcut stays unchanged for online play.
 This preview has no Steam integration, uses loopback networking, and does not sync
 preview saves back into the original save folder.
