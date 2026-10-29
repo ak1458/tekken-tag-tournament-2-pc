@@ -1,14 +1,9 @@
 <!-- community-preview-downloads:start -->
-## Community offline updater
+## Offline updater download suspended
 
-[![Download offline updater EXE](https://img.shields.io/badge/Download-Offline_Updater_EXE-2ea44f?style=for-the-badge&logo=windows)](https://github.com/ak1458/tekken-tag-tournament-2-pc/releases/latest/download/TTT2-Offline-Update-2026-10-29.exe)
-[![View releases](https://img.shields.io/badge/View-All_Releases-0969da?style=for-the-badge&logo=github)](https://github.com/ak1458/tekken-tag-tournament-2-pc/releases)
-[![Contribution PR 77](https://img.shields.io/badge/Contribution-PR_%2377-bf8700?style=for-the-badge&logo=github)](https://github.com/shihabal3amri/tekken-tag-tournament-2-pc/pull/77)
+Microsoft Defender reported **Trojan:Win32/Sabsik.TE.A!ml** for the 2026-10-29 updater. The recent standalone releases have been withdrawn while the build and payloads are investigated. Do not disable antivirus, add exclusions, or restore the flagged updater. This has not been established to be a false positive.
 
-**2026-10-29 experimental Windows update:** [Release notes and checksums](https://github.com/ak1458/tekken-tag-tournament-2-pc/releases/latest).
-Close the game, download/open the EXE, and select your existing installation once. Installation creates **TTT2 Offline Launcher** on your Windows desktop. Next time, open that shortcut directly; no updater or game-location selection is needed. The original shortcut stays available for online play, and the preview uses copied settings/saves. This preview has no Steam integration. Physical gameplay and live save/restart acceptance remain pending.
-
-The upstream project and its original installer are documented below.
+[Contribution and investigation context](https://github.com/shihabal3amri/tekken-tag-tournament-2-pc/pull/77)
 <!-- community-preview-downloads:end -->
 
 ---
