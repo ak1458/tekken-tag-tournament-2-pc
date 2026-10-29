@@ -7,16 +7,25 @@
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#include "clean_install_paths.h"
 
 // The installed launcher restores its own isolated environment. A desktop link
 // can target it directly; the downloaded updater is needed only to install updates.
 namespace preview_environment {
 inline bool Configure(const std::filesystem::path& executable) {
     namespace fs=std::filesystem;
+    if(clean_install::Configure(executable))return true;
     const auto app=fs::absolute(executable).lexically_normal().parent_path();
-    const auto state=app.parent_path();
+    const bool inPlace=fs::is_regular_file(app/L".ttt2-installed-update-v1");
+    const auto state=inPlace?app/L".ttt2-community":app.parent_path();
     const auto marker=state/L".ttt2-community-preview-v1";
-    if(app.filename()!=L"app" || !fs::is_regular_file(marker))return false;
+    if(!inPlace && (app.filename()!=L"app" || !fs::is_regular_file(marker)))return false;
+    if(inPlace) {
+        std::ifstream installedMarker(app/L".ttt2-installed-update-v1");std::string text;
+        std::getline(installedMarker,text);
+        if(text!="TTT2 installed launcher update v1" || !fs::is_regular_file(marker))
+            throw std::runtime_error("Incomplete game update. Run the updater again.");
+    }
     std::ifstream stream(marker);std::string value;std::getline(stream,value);
     if(value!="TTT2 community offline preview v1")
         throw std::runtime_error("Invalid offline preview. Run the updater again.");

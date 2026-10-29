@@ -1,6 +1,6 @@
 # Antivirus release review - 2026-10-29
 
-**Release blocked.** Microsoft Defender detected
+**Historical incident: withdrawn community.2/community.3 installers.** Microsoft Defender detected
 `Trojan:Win32/Sabsik.TE.A!ml` in the downloaded standalone updater and reproduced
 the detection against its local build. No false-positive determination exists.
 The recent standalone downloads are withdrawn. Functional test passes do not
@@ -37,7 +37,7 @@ Inspection of launcher process creation found the selected original executable
 and installed preview launcher paths. This bounded source inspection and the
 component scan results do not identify the cause of the standalone detection.
 
-## Required before another binary upload
+## Requirements for reinstating the flagged installer
 
 1. Obtain a malware-analysis determination for the flagged standalone sample.
    Do not rebuild or alter packaging merely to obtain a different detection.
@@ -47,10 +47,24 @@ component scan results do not identify the cause of the standalone detection.
 3. Only after that gate passes, run updater/shortcut/save-preservation checks
    against those exact artifacts, then verify uploaded checksums.
 
-The gate was run locally: four component/plain-updater checks passed, and the
+The historical gate was run locally: four component/plain-updater checks passed, and the
 standalone check failed. No replacement binary was uploaded. The gate and this
 report are a source-only contribution; the PR remains draft.
 
 Raw scanner logs and machine-specific incident records are local and excluded
 from the repository. Independent review, live gameplay/save acceptance and the
 previously recorded feature/platform blockers remain outstanding.
+
+## Current release separation — 2026-10-29
+
+The community.4 update uses the newer clean in-place Windows wizard and native
+GUI-subsystem runtime packaging. It does not restore or republish the flagged
+installer. Its versioned payload and final updater receive their own exact-file
+Defender gate and installation regressions; see `CHANGELOG.md` and
+`docs/releases/RELEASING.md` for current behavior and remaining acceptance limits.
+
+The cause of the earlier detection remains undetermined. A successful local
+scan of the current release is not a false-positive determination for the old
+artifact or an independent safety certification. The old downloads remain
+retired; this report preserves the original evidence without placing obsolete
+installer instructions at the top of the current README or contribution.

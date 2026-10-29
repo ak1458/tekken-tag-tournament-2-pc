@@ -17,13 +17,15 @@
 #include <dxgi1_6.h>
 #include <wrl/client.h>
 #include "preview_environment.h"
+#include "original_launch.h"
+#include "update_version.h"
 #include "../runtime/kernel/display_settings.h"
 #include "../runtime/kernel/display_devices.h"
 #include "../runtime/kernel/graphics_registry.h"
 
 namespace {
 namespace settings = display_settings;
-enum : int { Browse = 100, Save, Play, Mode, Resolution, AA, Sharpness, Filter, VSync, Shadows, Delay, GamePath, InputLayout, SOCD, StickMode, Deadzone, Tabs, Preset, Defaults, GraphicsTab, InputTab, CheatsTab, Overlay, InfiniteHealth, InfiniteMoney, UnlockContent, AdvancedTab, Brightness, Gamma, Contrast, GpuAdapter, Monitor, ColorDefaults, QualityTab, RefreshRate, TextureQuality, RenderScale, PerformanceStats, MotionBlur, CalibrationPattern, PlayerOnePreference, StickDiagonal };
+enum : int { Browse = 100, Save, Play, Mode, Resolution, AA, Sharpness, Filter, VSync, Shadows, Delay, GamePath, InputLayout, SOCD, StickMode, Deadzone, Tabs, Preset, Defaults, GraphicsTab, InputTab, CheatsTab, Overlay, InfiniteHealth, InfiniteMoney, UnlockContent, AdvancedTab, Brightness, Gamma, Contrast, GpuAdapter, Monitor, ColorDefaults, QualityTab, RefreshRate, TextureQuality, RenderScale, PerformanceStats, MotionBlur, CalibrationPattern, PlayerOnePreference, StickDiagonal, PlayOnline };
 HWND window;
 HFONT font;
 int dpi = 96;
@@ -178,8 +180,9 @@ bool GameRunning() {
     bool running = false;
     if (!Process32FirstW(snapshot, &process)) running = true;
     else do {
-        if (!_wcsicmp(process.szExeFile, L"Tekken Tag Tournament 2.exe") ||
-            !_wcsicmp(process.szExeFile, L"tekken_recomp.exe")) { running = true; break; }
+        if (process.th32ProcessID!=GetCurrentProcessId() &&
+            (!_wcsicmp(process.szExeFile, L"Tekken Tag Tournament 2.exe") ||
+            !_wcsicmp(process.szExeFile, L"tekken_recomp.exe"))) { running = true; break; }
     } while (Process32NextW(snapshot, &process));
     CloseHandle(snapshot);
     return running;
@@ -255,6 +258,10 @@ void PickGame() {
 void Launch() {
     const std::filesystem::path exe(Text(Control(GamePath)));
     std::error_code ec;
+    wchar_t self[32768]{};GetModuleFileNameW(nullptr,self,32768);
+    if(std::filesystem::equivalent(exe,std::filesystem::path(self),ec)) {
+        Error(L"The launcher cannot launch itself. Choose tekken_recomp.exe.");return;
+    }
     if (!exe.is_absolute() || !std::filesystem::is_regular_file(exe, ec) ||
         (_wcsicmp(exe.filename().c_str(), L"Tekken Tag Tournament 2.exe") &&
          _wcsicmp(exe.filename().c_str(), L"tekken_recomp.exe"))) {
@@ -275,6 +282,20 @@ void Launch() {
     CloseHandle(process.hThread);
     CloseHandle(process.hProcess);
     DestroyWindow(window);
+}
+void LaunchOnline() {
+    if(GameRunning()){Error(L"Close the running game before launching another copy.");return;}
+    wchar_t self[32768]{};GetModuleFileNameW(nullptr,self,32768);
+    const auto root=std::filesystem::path(self).parent_path();
+    wchar_t configured[32768]{};
+    GetPrivateProfileStringW(L"Launcher",L"OriginalExecutable",L"",configured,32768,launcherIni.c_str());
+    const auto exe=*configured?std::filesystem::path(configured):root/L"Tekken Tag Tournament 2 (Original).exe";
+    if(!std::filesystem::is_regular_file(exe) || std::filesystem::equivalent(exe,std::filesystem::path(self))) {
+        Error(L"The original game executable is missing. Restore it from your update backup.");return;
+    }
+    PROCESS_INFORMATION process{};
+    if(!original_launch::Start(exe,process,root)) {Error(L"Windows could not start the original game.");return;}
+    CloseHandle(process.hThread);CloseHandle(process.hProcess);DestroyWindow(window);
 }
 void BuildUI() {
     font = CreateFontW(-Px(16), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
@@ -301,7 +322,7 @@ void BuildUI() {
     Combo(Preset,L"Graphics preset",474,{L"Original",L"Performance",L"Enhanced",L"Custom"},3);
     Add(L"BUTTON",L"Restore original graphics",WS_TABSTOP,Defaults,448,524,242,30);
     controlGroup=2;
-    Combo(InputLayout,L"Player assignment",154,{L"Shared Player 1 (legacy)",L"Start to join (automatic)"},GetPrivateProfileIntW(L"Keyboard",L"SeparatePlayer",0,settingsIni.c_str())==1);
+    Combo(InputLayout,L"Player assignment",154,{L"Shared Player 1 (legacy)",L"Start to join (automatic)"},GetPrivateProfileIntW(L"Keyboard",L"SeparatePlayer",1,settingsIni.c_str())==1);
     Combo(SOCD,L"Keyboard SOCD",194,{L"Original",L"Neutral",L"Up priority",L"Last input priority"},
         GetPrivateProfileIntW(L"Keyboard",L"SOCD",0,settingsIni.c_str())<=3?GetPrivateProfileIntW(L"Keyboard",L"SOCD",0,settingsIni.c_str()):0);
     Combo(StickMode,L"Controller directions",234,{L"D-pad + analog",L"D-pad only"},GetPrivateProfileIntW(L"Input",L"DPadOnly",0,settingsIni.c_str())==1);
@@ -366,11 +387,12 @@ void BuildUI() {
     Add(L"BUTTON",L"Browse",WS_TABSTOP,Browse,920,624,104,32);
     wchar_t netMode[32]{};GetEnvironmentVariableW(L"TTT2_NET",netMode,static_cast<DWORD>(std::size(netMode)));
     const wchar_t* onlineHint=!_wcsicmp(netMode,L"loopback")
-        ?L"Offline preview. For online play, open the updater and choose the original game."
+        ?L"Offline uses the updated game. Online uses the preserved original. Both use your normal save location."
         :(SteamRunning()?L"Steam is running. Online also requires a Steam-enabled game build.":L"Steam is not running. Start it for online play with a compatible build.");
     Add(L"STATIC",onlineHint,0,0,448,672,576,38);
     Add(L"BUTTON",L"Save settings",WS_TABSTOP,Save,448,722,170,42);
-    Add(L"BUTTON",L"PLAY GAME",WS_TABSTOP|BS_DEFPUSHBUTTON,Play,780,722,244,42);
+    Add(L"BUTTON",L"PLAY ONLINE",WS_TABSTOP,PlayOnline,630,722,184,42);
+    Add(L"BUTTON",L"PLAY OFFLINE",WS_TABSTOP|BS_DEFPUSHBUTTON,Play,828,722,196,42);
     Select(Preset, CurrentPreset());
     ShowTab();
     wchar_t saved[32768]{};
@@ -429,6 +451,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (LOWORD(wp) == Browse) PickGame();
             if (LOWORD(wp) == Save && Apply()) MessageBoxW(window, L"Settings saved.", L"TTT2 Launcher", MB_OK);
             if (LOWORD(wp) == Play) Launch();
+            if (LOWORD(wp) == PlayOnline) LaunchOnline();
         }
         return 0;
     case WM_DESTROY: DeleteObject(font);hero.reset();if(heroStream)heroStream->Release();DeleteObject(panelBrush);DeleteObject(fieldBrush);PostQuitMessage(0);return 0;
@@ -436,12 +459,16 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 }
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR arguments, int show) {
     try {
         wchar_t self[32768]{};
         const DWORD size=GetModuleFileNameW(nullptr,self,32768);
         if(!size || size>=32768)throw std::runtime_error("Cannot locate the launcher.");
-        preview_environment::Configure(self);
+        const bool configured=preview_environment::Configure(self);
+        // Headless installation acceptance: same startup path and process
+        // ownership check as normal launch, without opening a window/game.
+        if(arguments && !_wcsicmp(arguments,L"--check-install"))
+            return configured && !GameRunning()?0:2;
     } catch(const std::exception& error) {
         MessageBoxA(nullptr,error.what(),"TTT2 Offline Launcher",MB_OK|MB_ICONERROR);return 1;
     }
@@ -465,6 +492,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     settingsIni = overrideSize && overrideSize < std::size(overridePath) ? overridePath : (dir / L"settings.ini").wstring();
     if (overrideSize && overrideSize < std::size(overridePath))
         launcherIni = (std::filesystem::path(settingsIni).parent_path() / L"launcher.ini").wstring();
+    wchar_t launchOverride[32768]{};
+    if(GetEnvironmentVariableW(L"TTT2_LAUNCHER_INI",launchOverride,32768))launcherIni=launchOverride;
     WNDCLASSW cls{};
     cls.lpfnWndProc = WindowProc; cls.hInstance = instance; cls.lpszClassName = L"TTT2Launcher";
     cls.hCursor = LoadCursorW(nullptr, IDC_ARROW); cls.hbrBackground = nullptr;
@@ -472,7 +501,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     if (!RegisterClassW(&cls)) return 1;
     const DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN;
     RECT rect{ 0, 0, Px(1080), Px(790) }; AdjustWindowRect(&rect, style, FALSE);
-    HWND hwnd = CreateWindowW(cls.lpszClassName, L"TTT2 Launcher", style, CW_USEDEFAULT, CW_USEDEFAULT,
+    HWND hwnd = CreateWindowW(cls.lpszClassName, L"TTT2 Launcher - v" TTT2_UPDATE_VERSION_W, style, CW_USEDEFAULT, CW_USEDEFAULT,
         rect.right - rect.left, rect.bottom - rect.top, nullptr, nullptr, instance, nullptr);
     if (!hwnd) return 1;
     BOOL dark=TRUE;DwmSetWindowAttribute(hwnd,20,&dark,sizeof(dark));

@@ -246,6 +246,10 @@ void Prepare(const fs::path& package,const fs::path& install,const fs::path& sta
     Require(WritePrivateProfileStringW(L"Preview",L"InstalledGame",install.c_str(),(state/L"preview.ini").c_str()),"Cannot save the installed game location.");
 }
 }
+#ifdef TTT2_INPLACE_UPDATE
+#include "inplace_update.h"
+int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){return inplace_update::Main();}
+#else
 int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
     bool prepareOnly=false,launchOriginal=false;
     try{
@@ -318,3 +322,4 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
         OutputDebugStringA(error.what());return 1;
     }
 }
+#endif
