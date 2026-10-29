@@ -1,3 +1,18 @@
+<!-- community-preview-downloads:start -->
+## Community offline updater
+
+[![Download offline updater EXE](https://img.shields.io/badge/Download-Offline_Updater_EXE-2ea44f?style=for-the-badge&logo=windows)](https://github.com/ak1458/tekken-tag-tournament-2-pc/releases/download/v0.1.7-community.2/TTT2-Offline-Update-2026-10-29.exe)
+[![View releases](https://img.shields.io/badge/View-All_Releases-0969da?style=for-the-badge&logo=github)](https://github.com/ak1458/tekken-tag-tournament-2-pc/releases)
+[![Contribution PR 77](https://img.shields.io/badge/Contribution-PR_%2377-bf8700?style=for-the-badge&logo=github)](https://github.com/shihabal3amri/tekken-tag-tournament-2-pc/pull/77)
+
+**2026-10-29 experimental Windows update:** [Release notes and checksums](https://github.com/ak1458/tekken-tag-tournament-2-pc/releases/tag/v0.1.7-community.2).
+Close the game, download the EXE, and select your existing installation. The updater creates a separate offline preview with copied settings/saves; keep the original for online play. This preview has no Steam integration. Physical gameplay and live save/restart acceptance remain pending.
+
+The upstream project and its original installer are documented below.
+<!-- community-preview-downloads:end -->
+
+---
+
 <p align="center">
   <img src=".github/assets/banner.png" alt="Tekken Tag Tournament 2 - native PC port" width="100%">
 </p>
