@@ -1,5 +1,10 @@
 # Tekken Tag Tournament 2 — Community Windows Update
 
+[![Stars](https://img.shields.io/github/stars/ak1458/tekken-tag-tournament-2-pc?style=flat-square)](https://github.com/ak1458/tekken-tag-tournament-2-pc/stargazers)
+[![Watching](https://img.shields.io/github/watchers/ak1458/tekken-tag-tournament-2-pc?style=flat-square)](https://github.com/ak1458/tekken-tag-tournament-2-pc/watchers)
+[![Forks](https://img.shields.io/github/forks/ak1458/tekken-tag-tournament-2-pc?style=flat-square)](https://github.com/ak1458/tekken-tag-tournament-2-pc/forks)
+[![Activity](https://img.shields.io/github/last-commit/ak1458/tekken-tag-tournament-2-pc?style=flat-square)](https://github.com/ak1458/tekken-tag-tournament-2-pc/activity)
+
 [![Release: Prerelease](https://img.shields.io/badge/Release-Prerelease-D97706?style=flat-square)](https://github.com/ak1458/tekken-tag-tournament-2-pc/releases)
 [![Source: Community fork](https://img.shields.io/badge/Source-Community%20fork-64748B?style=flat-square)](https://github.com/shihabal3amri/tekken-tag-tournament-2-pc)
 
