@@ -1,5 +1,8 @@
 # Tekken Tag Tournament 2 — Community Windows Update
 
+[![Release: Prerelease](https://img.shields.io/badge/Release-Prerelease-D97706?style=flat-square)](https://github.com/ak1458/tekken-tag-tournament-2-pc/releases)
+[![Source: Community fork](https://img.shields.io/badge/Source-Community%20fork-64748B?style=flat-square)](https://github.com/shihabal3amri/tekken-tag-tournament-2-pc)
+
 **v0.1.7-community.4 · 2026-10-29 · Prerelease**
 
 An unofficial update for an existing USA/Europe TU3 installation of the
