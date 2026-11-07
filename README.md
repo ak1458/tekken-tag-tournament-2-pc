@@ -45,3 +45,30 @@ Older experimental installers are retired. Their
 alert has not been declared a false positive.
 
 [Build instructions](BUILDING.md) · [Source contribution](https://github.com/shihabal3amri/tekken-tag-tournament-2-pc/pull/77)
+
+
+## Source architecture
+
+This is a community fork of the upstream static-recompilation project. It adds Windows update/launcher and graphics/input work around an existing game installation. The original port and other contributors retain their credit.
+
+| Area | Purpose |
+| --- | --- |
+| [port/](port/) | Native runtime and platform build source. |
+| [tools/](tools/) | Build, packaging, patch, and preparation helpers. |
+| [server/](server/) | Online/server protocol implementation and notices. |
+| [docs/graphics/](docs/graphics/) | Renderer/input research and validation records. |
+| [BUILDING.md](BUILDING.md) | Required toolchain and owner-supplied game-file build path. |
+
+## Build and validate
+
+Read [BUILDING.md](BUILDING.md) before compiling. Its toolchain includes Visual Studio 2022 Build Tools, LLVM/Clang, CMake/Ninja, Python, and generated C++ from the owner’s disc image and title update. Recompiler/runtime dependencies and paths are documented there. The repository does not supply game assets, an Xbox title update, or a Steamworks SDK.
+
+The optional launcher can be built using `tools\build_launcher.cmd`. Device-routing checks include `python port/tools/test_separate_players.py`; these use simulated input and do not establish gameplay or online acceptance. Graphics checks and their platform requirements are documented under `docs/graphics/`.
+
+## Version and distribution notes
+
+The published updater is **v0.1.7-community.4**, marked as a prerelease. Its installer and checksum are actual GitHub release assets. A source archive, launcher build, game installation, and binary updater are different artifacts; use the instructions for the artifact you intend to run. No GitHub Packages artifact is implied.
+
+## Licensing and notices
+
+No root blanket project license is present in this fork. Preserve upstream, bundled dependency, server, renderer, and third-party notices. Availability of source or an updater does not grant rights to game content. See the upstream project and relevant notices before redistribution.
